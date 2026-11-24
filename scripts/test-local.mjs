@@ -208,6 +208,17 @@ try {
   response = await fetch(`${BASE}/`, { headers: { Cookie: session } });
   assert(response.status === 200, '确认后应该能看版面');
 
+  // 楼志
+  response = await fetch(`${BASE}/api/chronicle`);
+  assert(response.status === 200, '楼志 API 应该 200');
+  const chronicle = await response.json();
+  assert(chronicle.events.length > 0, '楼志应该有事件');
+  response = await fetch(`${BASE}/chronicle`, { headers: { Cookie: session } });
+  assert(response.status === 200, '登录后应该能看楼志');
+  assert((await response.text()).includes('楼志'), '楼志页面应该存在');
+  response = await fetch(`${BASE}/chronicle`, { redirect: 'manual' });
+  assert(response.status === 302, '未登录楼志应该跳转');
+
   // 灯油码仍然可用
   const [code] = access.createLampCodes(30, 1);
   response = await fetch(`${BASE}/visit/lamp`, {
@@ -234,7 +245,12 @@ try {
       encoding: 'utf8'
     }
   );
-  assert(mcp.includes('tools:') && mcp.includes('tree'), 'MCP 工具列表应该包含 tree');
+  assert(
+    mcp.includes('tools:') &&
+      mcp.includes('tree') &&
+      mcp.includes('chronicle'),
+    'MCP 工具列表应该包含 tree 和 chronicle'
+  );
 
   console.log(
     '本地测试全部通过：门牌 / Agent API / 人类十分钟 / 灯油码 / 后台 / MCP'

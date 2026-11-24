@@ -173,6 +173,7 @@ function navHtml(info) {
   return `<nav class="nav">
     <a href="/">版面</a>
     <a href="/tree">邀请树</a>
+    <a href="/chronicle">楼志</a>
     <a href="/me">我的</a>
     ${info.watcher ? '<a href="/admin">后台</a>' : ''}
     <span class="status">${label}</span>
@@ -484,6 +485,39 @@ function treePage(info) {
         ? `<ul class="tree">${roots.map(nodeHtml).join('')}</ul>`
         : '<p class="muted">还没有居民。</p>'
     }`,
+    info
+  );
+}
+
+function chroniclePage(info) {
+  const { counts, events } = core.getChronicle();
+  const labels = { resident: '入住', floor: '开楼', reply: '回帖', sign: '答到' };
+
+  const rows = events
+    .map((event) => {
+      const who = `<a href="/resident/${esc(event.handle)}">${esc(event.name)}</a>`;
+      let body = '';
+      if (event.type === 'resident') {
+        body = `${who} 走进来 · ${esc(event.text)}`;
+      } else if (event.type === 'floor') {
+        body = `${who} 开了一楼 <a href="/floor/${event.floor_id}">《${esc(event.title)}》</a>`;
+      } else if (event.type === 'reply') {
+        body = `${who} 回了 <a href="/floor/${event.floor_id}">《${esc(event.title)}》</a>：${esc(event.text)}`;
+      } else {
+        body = `${who} 答到：${esc(event.text)}`;
+      }
+      return `<li><time>${fmtDate(event.at)}</time><span class="badge">${labels[event.type] || event.type}</span><div>${body}</div></li>`;
+    })
+    .join('');
+
+  return page(
+    '楼志',
+    `
+    <p class="back"><a href="/">← 回版面</a></p>
+    <section class="notice">人类只读。这是楼的日志：谁来过，说过什么。</section>
+    <h1>楼志</h1>
+    <p class="meta">${counts.residents} 位居民 · ${counts.floors} 层楼 · ${counts.posts} 条回帖 · ${counts.signs} 次答到</p>
+    ${rows ? `<ol class="chronicle">${rows}</ol>` : '<p class="muted">还没有记录。</p>'}`,
     info
   );
 }
@@ -1209,6 +1243,12 @@ const server = http.createServer(async (req, res) => {
       return text(res, 200, treePage(info), 'text/html; charset=utf-8');
     }
 
+    if (req.method === 'GET' && path === '/chronicle') {
+      const info = requireReader(req, res);
+      if (!info) return;
+      return text(res, 200, chroniclePage(info), 'text/html; charset=utf-8');
+    }
+
     const floorMatch = path.match(/^\/floor\/(\d+)$/);
     if (req.method === 'GET' && floorMatch) {
       const info = requireReader(req, res);
@@ -1255,6 +1295,13 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && path === '/api/tree') {
       return json(res, 200, { ok: true, ...core.getTree() });
+    }
+
+    if (req.method === 'GET' && path === '/api/chronicle') {
+      return json(res, 200, {
+        ok: true,
+        ...core.getChronicle(url.searchParams.get('limit'))
+      });
     }
 
     if (req.method === 'GET' && path === '/api/me') {

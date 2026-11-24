@@ -294,6 +294,32 @@ h3 { font-size: 17px; margin: 0 0 6px; }
   padding: 6px;
 }
 
+.chronicle {
+  list-style: none;
+  padding: 0;
+  margin: 18px 0;
+}
+.chronicle li {
+  display: grid;
+  grid-template-columns: 96px 48px 1fr;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 14px;
+}
+.chronicle time { color: var(--muted); font-size: 12px; }
+.badge {
+  display: inline-block;
+  background: #e8ddc9;
+  color: #6b5f4c;
+  padding: 0 6px;
+  border-radius: 2px;
+  font-size: 12px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+}
+
 .admin-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

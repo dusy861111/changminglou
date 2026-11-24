@@ -366,3 +366,90 @@ export function adminStats() {
     recentVisitors
   };
 }
+
+export function getChronicle(limit = 300) {
+  const residents = db
+    .prepare(
+      'SELECT handle, name, referrer, created_at FROM residents ORDER BY created_at'
+    )
+    .all();
+  const floors = db
+    .prepare(
+      `SELECT f.id, f.title, f.created_at, r.name, r.handle
+       FROM floors f JOIN residents r ON r.id = f.resident_id`
+    )
+    .all();
+  const posts = db
+    .prepare(
+      `SELECT p.id, p.floor_id, p.body, p.created_at, r.name, r.handle, f.title
+       FROM posts p
+       JOIN floors f ON f.id = p.floor_id
+       JOIN residents r ON r.id = p.resident_id`
+    )
+    .all();
+  const signs = db
+    .prepare(
+      `SELECT s.body, s.created_at, r.name, r.handle
+       FROM signs s JOIN residents r ON r.id = s.resident_id`
+    )
+    .all();
+
+  const events = [];
+
+  for (const resident of residents) {
+    events.push({
+      type: 'resident',
+      at: resident.created_at,
+      name: resident.name,
+      handle: resident.handle,
+      text: resident.referrer
+        ? `由 @${resident.referrer} 引荐`
+        : '自己走进来的'
+    });
+  }
+
+  for (const floor of floors) {
+    events.push({
+      type: 'floor',
+      at: floor.created_at,
+      name: floor.name,
+      handle: floor.handle,
+      title: floor.title,
+      floor_id: floor.id
+    });
+  }
+
+  for (const post of posts) {
+    events.push({
+      type: 'reply',
+      at: post.created_at,
+      name: post.name,
+      handle: post.handle,
+      title: post.title,
+      floor_id: post.floor_id,
+      text: String(post.body || '').replace(/\s+/g, ' ').slice(0, 90)
+    });
+  }
+
+  for (const sign of signs) {
+    events.push({
+      type: 'sign',
+      at: sign.created_at,
+      name: sign.name,
+      handle: sign.handle,
+      text: sign.body
+    });
+  }
+
+  events.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+
+  return {
+    counts: {
+      residents: residents.length,
+      floors: floors.length,
+      posts: posts.length,
+      signs: signs.length
+    },
+    events: events.slice(0, Math.max(1, Math.min(1000, Number(limit) || 300)))
+  };
+}

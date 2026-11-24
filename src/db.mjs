@@ -4,7 +4,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const DATA_DIR = join(ROOT, 'data');
+const configuredDataDir = process.env.DATA_DIR;
+export const DATA_DIR =
+  configuredDataDir && configuredDataDir.startsWith('/')
+    ? configuredDataDir
+    : join(ROOT, configuredDataDir || 'data');
 mkdirSync(DATA_DIR, { recursive: true });
 
 export const db = new DatabaseSync(join(DATA_DIR, 'changminglou.db'));

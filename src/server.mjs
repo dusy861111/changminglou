@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { db, today, ROOT } from './db.mjs';
+import { db, today, ROOT, DATA_DIR } from './db.mjs';
 import * as core from './core.mjs';
 import * as access from './access.mjs';
 import { handleMcpRequest } from './mcp.mjs';
@@ -535,7 +535,7 @@ function adminPage(info) {
 
   let publicUrl = '';
   try {
-    publicUrl = readFileSync(join(ROOT, 'data', 'public-url.txt'), 'utf8').trim();
+    publicUrl = readFileSync(join(DATA_DIR, 'public-url.txt'), 'utf8').trim();
   } catch {
     // 还没开公网
   }

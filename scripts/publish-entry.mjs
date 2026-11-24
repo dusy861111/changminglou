@@ -21,20 +21,32 @@ try {
   // 第一次写
 }
 
+const indexPath = join(ROOT, 'docs', 'index.html');
+const indexHtml = readFileSync(indexPath, 'utf8');
+const nextHtml = indexHtml.replace(
+  /const FALLBACK = '[^']*';/,
+  `const FALLBACK = '${url}';`
+);
+const htmlChanged = nextHtml !== indexHtml;
+
 if (previous !== next) {
   writeFileSync(target, next);
   console.log(`docs/current.json -> ${url}`);
 } else {
   console.log('docs/current.json 已是最新');
 }
+if (htmlChanged) {
+  writeFileSync(indexPath, nextHtml);
+  console.log('docs/index.html 的 FALLBACK 已更新');
+}
 
-if (process.argv.includes('--push') && previous !== next) {
+if (process.argv.includes('--push') && (previous !== next || htmlChanged)) {
   try {
-    execSync('git add docs/current.json && git commit -m "update entrance" && git push', {
-      cwd: ROOT,
-      stdio: 'inherit'
-    });
+    execSync(
+      'git add docs/current.json docs/index.html && git commit -m "update entrance" && git push',
+      { cwd: ROOT, stdio: 'inherit' }
+    );
   } catch {
-    console.error('git push 失败，本地 current.json 已更新');
+    console.error('git push 失败，本地入口页已更新');
   }
 }

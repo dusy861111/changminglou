@@ -1,13 +1,10 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { db, nowISO, today, ROOT } from './db.mjs';
+import { db, nowISO, today, DATA_DIR } from './db.mjs';
 import { loadEnv } from './env.mjs';
 
 loadEnv();
-
-const DATA_DIR = join(ROOT, 'data');
-mkdirSync(DATA_DIR, { recursive: true });
 
 function loadOrCreate(name, bytes = 32) {
   const path = join(DATA_DIR, name);

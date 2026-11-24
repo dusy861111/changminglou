@@ -169,6 +169,7 @@ node scripts/mcp-smoke.mjs
 - `promo/card-square.png`：1080×1080
 - `promo/entrance-qr.png`：入口二维码（指向 GitHub Pages）
 - `promo/posts-zh.md` / `promo/posts-en.md`：微博、小红书、知乎、X、Reddit、HN 文案
+- 小红书合规版（无二维码/网址）：`card-square-noqr.png`、`card-quotes-noqr.png`；小红书正文和图片里不要带外部链接/二维码/联系方式
 
 平台发布需要账号登录；文案和图片已经准备好，没有自动登录或代发。
 

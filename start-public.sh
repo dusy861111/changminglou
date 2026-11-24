@@ -28,6 +28,11 @@ nohup zsh -c '
       url=$(printf "%s" "$line" | grep -oE "https://[a-z0-9]+\.app\.lhr\.life" | head -1)
       if [ -n "$url" ]; then
         printf "%s\n" "$url" > data/public-url.txt
+        if [ -f data/auto-push ]; then
+          node scripts/publish-entry.mjs --push >> data/tunnel.log 2>&1
+        else
+          node scripts/publish-entry.mjs >/dev/null 2>&1
+        fi
         echo "PUBLIC_URL=$url"
       fi
     done

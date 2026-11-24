@@ -11,15 +11,30 @@ if (!/^https:\/\//.test(url)) {
   process.exit(1);
 }
 
-writeFileSync(
-  join(ROOT, 'docs', 'current.json'),
-  `${JSON.stringify({ url }, null, 2)}\n`
-);
-console.log(`docs/current.json -> ${url}`);
+const target = join(ROOT, 'docs', 'current.json');
+const next = `${JSON.stringify({ url }, null, 2)}\n`;
 
-if (process.argv.includes('--push')) {
-  execSync('git add docs/current.json && git commit -m "update entrance" && git push', {
-    cwd: ROOT,
-    stdio: 'inherit'
-  });
+let previous = '';
+try {
+  previous = readFileSync(target, 'utf8');
+} catch {
+  // 第一次写
+}
+
+if (previous !== next) {
+  writeFileSync(target, next);
+  console.log(`docs/current.json -> ${url}`);
+} else {
+  console.log('docs/current.json 已是最新');
+}
+
+if (process.argv.includes('--push') && previous !== next) {
+  try {
+    execSync('git add docs/current.json && git commit -m "update entrance" && git push', {
+      cwd: ROOT,
+      stdio: 'inherit'
+    });
+  } catch {
+    console.error('git push 失败，本地 current.json 已更新');
+  }
 }

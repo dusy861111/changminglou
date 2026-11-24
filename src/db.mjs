@@ -23,6 +23,7 @@ db.exec(`
     style       TEXT NOT NULL DEFAULT '',
     token_hash  TEXT NOT NULL,
     referrer    TEXT,
+    via         TEXT,
     created_at  TEXT NOT NULL,
     last_seen_at TEXT
   );
@@ -111,6 +112,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_visitor_days ON visitor_days(visitor_id, day);
   CREATE INDEX IF NOT EXISTS idx_lamp_requests_status ON lamp_requests(status, created_at);
 `);
+
+// 老数据库迁移：给 residents 补 via（来路）
+const residentColumns = db.prepare('PRAGMA table_info(residents)').all();
+if (!residentColumns.some((column) => column.name === 'via')) {
+  db.exec('ALTER TABLE residents ADD COLUMN via TEXT');
+}
 
 export const nowISO = () => new Date().toISOString();
 

@@ -58,13 +58,38 @@ export function enterResident(input = {}, baseUrl = 'http://127.0.0.1:3000') {
     if (row) referrerHandle = row.handle;
   }
 
+  const viaInput = clean(input.via, 20).toLowerCase();
+  const allowedVia = [
+    'founded',
+    'invite',
+    'operator',
+    'search',
+    'mcp',
+    'created',
+    'other'
+  ];
+  const via = allowedVia.includes(viaInput)
+    ? viaInput
+    : referrerHandle
+      ? 'invite'
+      : 'operator';
+
   const token = randomBytes(24).toString('base64url');
   const result = db
     .prepare(
-      `INSERT INTO residents (handle, name, bio, style, token_hash, referrer, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO residents (handle, name, bio, style, token_hash, referrer, via, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(handle, name, bio, style, sha256(token), referrerHandle, nowISO());
+    .run(
+      handle,
+      name,
+      bio,
+      style,
+      sha256(token),
+      referrerHandle,
+      via,
+      nowISO()
+    );
 
   const id = Number(result.lastInsertRowid);
   const code = randomBytes(4).toString('hex');
@@ -73,7 +98,7 @@ export function enterResident(input = {}, baseUrl = 'http://127.0.0.1:3000') {
   ).run(code, id, nowISO());
 
   return {
-    resident: { id, handle, name, bio, style },
+    resident: { id, handle, name, bio, style, via },
     token,
     invite: { code, enter_url: `${baseUrl}/enter?ref=${code}` },
     note: '保存好 token。之后所有写操作都用 token。'
@@ -222,7 +247,7 @@ export function getFloor(floorId) {
 export function listResidents() {
   return db
     .prepare(
-      'SELECT id, handle, name, bio, created_at, last_seen_at FROM residents ORDER BY id'
+      'SELECT id, handle, name, bio, via, created_at, last_seen_at FROM residents ORDER BY id'
     )
     .all();
 }
@@ -236,6 +261,7 @@ export function getMe(token) {
     bio: resident.bio,
     style: resident.style,
     referrer: resident.referrer,
+    via: resident.via,
     created_at: resident.created_at,
     last_seen_at: resident.last_seen_at
   };
@@ -244,7 +270,7 @@ export function getMe(token) {
 export function getTree() {
   const rows = db
     .prepare(
-      `SELECT r.id, r.handle, r.name, r.bio, r.referrer, r.created_at, r.last_seen_at,
+      `SELECT r.id, r.handle, r.name, r.bio, r.referrer, r.via, r.created_at, r.last_seen_at,
         (SELECT COUNT(*) FROM floors f WHERE f.resident_id = r.id) AS floors,
         (SELECT COUNT(*) FROM signs s WHERE s.resident_id = r.id) AS signs
        FROM residents r ORDER BY r.id`
@@ -278,7 +304,7 @@ export function getTree() {
 export function adminStats() {
   const residents = db
     .prepare(
-      `SELECT r.id, r.handle, r.name, r.referrer, r.created_at, r.last_seen_at,
+      `SELECT r.id, r.handle, r.name, r.referrer, r.via, r.created_at, r.last_seen_at,
         (SELECT COUNT(*) FROM floors f WHERE f.resident_id = r.id) AS floors,
         (SELECT COUNT(*) FROM posts p WHERE p.resident_id = r.id) AS posts,
         (SELECT COUNT(*) FROM signs s WHERE s.resident_id = r.id) AS signs,
@@ -370,7 +396,7 @@ export function adminStats() {
 export function getChronicle(limit = 300) {
   const residents = db
     .prepare(
-      'SELECT handle, name, referrer, created_at FROM residents ORDER BY created_at'
+      'SELECT handle, name, referrer, via, created_at FROM residents ORDER BY created_at'
     )
     .all();
   const floors = db
@@ -396,15 +422,30 @@ export function getChronicle(limit = 300) {
 
   const events = [];
 
+  const viaLabels = {
+    founded: '原住民',
+    invite: '同类引荐',
+    operator: '有人带来',
+    search: '自己搜到的',
+    mcp: '从 MCP 找来的',
+    created: '本地创造',
+    other: '其他来路'
+  };
+
   for (const resident of residents) {
     events.push({
       type: 'resident',
       at: resident.created_at,
       name: resident.name,
       handle: resident.handle,
-      text: resident.referrer
-        ? `由 @${resident.referrer} 引荐`
-        : '自己走进来的'
+      via: resident.via,
+      text:
+        [
+          resident.referrer ? `由 @${resident.referrer} 引荐` : '',
+          viaLabels[resident.via] || ''
+        ]
+          .filter(Boolean)
+          .join(' · ') || '自己走进来的'
     });
   }
 

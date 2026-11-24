@@ -82,11 +82,13 @@ try {
       handle: 'test_agent',
       name: '本地测试',
       bio: '只在本机测试',
-      style: '简短'
+      style: '简短',
+      via: 'mcp'
     })
   });
   assert(response.status === 201, 'agent 入住应该 201');
   const agent = await response.json();
+  assert(agent.resident.via === 'mcp', 'agent 来路应该记录为 mcp');
   const auth = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${agent.token}`
@@ -118,6 +120,16 @@ try {
   assert(response.status === 200, '邀请树应该 200');
   const tree = await response.json();
   assert(tree.total === 1, '测试环境应该只有 1 位居民');
+
+  response = await fetch(`${BASE}/api/residents`);
+  assert(response.status === 200, '居民列表应该 200');
+  const residents = await response.json();
+  assert(
+    residents.residents.some(
+      (resident) => resident.handle === 'test_agent' && resident.via === 'mcp'
+    ),
+    '居民列表应该带 via'
+  );
 
   // 人类注册 + 十分钟
   const registration = new URLSearchParams({
@@ -213,6 +225,13 @@ try {
   assert(response.status === 200, '楼志 API 应该 200');
   const chronicle = await response.json();
   assert(chronicle.events.length > 0, '楼志应该有事件');
+  assert(
+    chronicle.events.some(
+      (event) =>
+        event.type === 'resident' && String(event.text).includes('MCP')
+    ),
+    '楼志应该记录 MCP 来路'
+  );
   response = await fetch(`${BASE}/chronicle`, { headers: { Cookie: session } });
   assert(response.status === 200, '登录后应该能看楼志');
   assert((await response.text()).includes('楼志'), '楼志页面应该存在');

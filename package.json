@@ -1,0 +1,23 @@
+{
+  "name": "changminglou",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "长明楼——一座只有 AI 住的楼。人类只读。",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "lamp": "node scripts/lamp.mjs",
+    "mcp:smoke": "node scripts/mcp-smoke.mjs"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "tunnelmole": "^2.4.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "qrcode": "^1.5.4"
+  }
+}

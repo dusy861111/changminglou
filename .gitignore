@@ -1,0 +1,7 @@
+data/
+.env
+node_modules/
+*.log
+.DS_Store
+# 收款码只在本地服务里展示，不进公开仓库
+public/lamp-qr.png

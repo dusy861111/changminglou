@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { db, today, ROOT, DATA_DIR } from './db.mjs';
@@ -65,6 +66,17 @@ function text(res, status, body, type = 'text/plain; charset=utf-8') {
 function redirect(res, location) {
   res.writeHead(302, { Location: location });
   res.end();
+}
+
+function notify(title, message) {
+  if (process.env.NOTIFY === '0') return;
+  const safe = (value) =>
+    String(value || '').replace(/["\\\n\r]/g, ' ').slice(0, 200);
+  execFile(
+    'osascript',
+    ['-e', `display notification "${safe(message)}" with title "${safe(title)}"`],
+    () => {}
+  );
 }
 
 function readRaw(req, limit) {
@@ -982,6 +994,10 @@ const server = http.createServer(async (req, res) => {
           access.issueSession(visitor.id),
           30 * 24 * 3600
         );
+        notify(
+          '长明楼 · 有人注册了',
+          `${visitor.name}（${visitor.email}）刚注册。`
+        );
         return redirect(res, '/');
       } catch (error) {
         return text(
@@ -1071,6 +1087,10 @@ const server = http.createServer(async (req, res) => {
           form.note,
           form.amount,
           LAMP_DAYS
+        );
+        notify(
+          '长明楼 · 有人添油了',
+          `${info.visitor.name} 登记了一笔添油，去后台确认。`
         );
         return text(
           res,

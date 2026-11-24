@@ -25,7 +25,8 @@ const server = spawn(process.execPath, ['src/server.mjs'], {
     ...process.env,
     DATA_DIR: DATA,
     PORT: String(PORT),
-    FREE_SECONDS: '60'
+    FREE_SECONDS: '60',
+    NOTIFY: '0'
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });

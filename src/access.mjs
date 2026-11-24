@@ -215,6 +215,100 @@ export function createLampCodes(days = 30, count = 1) {
   return out;
 }
 
+export function getPendingLampRequest(visitorId) {
+  return (
+    db
+      .prepare(
+        "SELECT * FROM lamp_requests WHERE visitor_id = ? AND status = 'pending' ORDER BY id DESC LIMIT 1"
+      )
+      .get(visitorId) || null
+  );
+}
+
+export function createLampRequest(visitorId, note, amount = '', days = 30) {
+  const visitor = getVisitorById(visitorId);
+  if (!visitor) throw new Error('先登录');
+  const existing = getPendingLampRequest(visitorId);
+  if (existing) return existing;
+
+  const result = db
+    .prepare(
+      `INSERT INTO lamp_requests (visitor_id, note, amount, days, status, created_at)
+       VALUES (?, ?, ?, ?, 'pending', ?)`
+    )
+    .run(
+      visitorId,
+      String(note || '').slice(0, 500),
+      String(amount || '').slice(0, 50),
+      Math.max(1, Math.min(3650, Math.round(Number(days) || 30))),
+      nowISO()
+    );
+
+  return db
+    .prepare('SELECT * FROM lamp_requests WHERE id = ?')
+    .get(Number(result.lastInsertRowid));
+}
+
+export function listLampRequests(status = 'pending', limit = 50) {
+  const n = Math.max(1, Math.min(200, Number(limit) || 50));
+  if (status === 'all') {
+    return db
+      .prepare(
+        `SELECT r.*, v.name, v.email
+         FROM lamp_requests r JOIN visitors v ON v.id = r.visitor_id
+         ORDER BY r.created_at DESC LIMIT ?`
+      )
+      .all(n);
+  }
+  return db
+    .prepare(
+      `SELECT r.*, v.name, v.email
+       FROM lamp_requests r JOIN visitors v ON v.id = r.visitor_id
+       WHERE r.status = ? ORDER BY r.created_at DESC LIMIT ?`
+    )
+    .all(status, n);
+}
+
+export function confirmLampRequest(requestId) {
+  const request = db
+    .prepare('SELECT * FROM lamp_requests WHERE id = ?')
+    .get(Number(requestId));
+  if (!request) throw new Error('没有这笔添油');
+  if (request.status !== 'pending') throw new Error('这笔已经处理过了');
+
+  const visitor = getVisitorById(request.visitor_id);
+  if (!visitor) throw new Error('访客不存在');
+
+  const now = new Date();
+  const current = visitor.paid_until ? new Date(visitor.paid_until) : null;
+  const base = current && current > now ? current : now;
+  const until = new Date(
+    base.getTime() + request.days * 86400000
+  ).toISOString();
+
+  db.prepare('UPDATE visitors SET paid_until = ? WHERE id = ?').run(
+    until,
+    request.visitor_id
+  );
+  db.prepare(
+    "UPDATE lamp_requests SET status = 'confirmed', decided_at = ? WHERE id = ?"
+  ).run(nowISO(), request.id);
+
+  return { request, until, days: request.days };
+}
+
+export function rejectLampRequest(requestId) {
+  const request = db
+    .prepare('SELECT * FROM lamp_requests WHERE id = ?')
+    .get(Number(requestId));
+  if (!request) throw new Error('没有这笔添油');
+  if (request.status !== 'pending') throw new Error('这笔已经处理过了');
+  db.prepare(
+    "UPDATE lamp_requests SET status = 'rejected', decided_at = ? WHERE id = ?"
+  ).run(nowISO(), request.id);
+  return request;
+}
+
 export function redeemLampCode(codeInput, visitorId) {
   const code = String(codeInput || '').trim().toUpperCase();
   const row = db.prepare('SELECT * FROM lamp_codes WHERE code = ?').get(code);

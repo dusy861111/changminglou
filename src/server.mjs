@@ -532,6 +532,8 @@ function residentPage(handle, info) {
 function adminPage(info) {
   const data = core.adminStats();
   const c = data.counts;
+  const pendingRequests = access.listLampRequests('pending', 50);
+  const recentRequests = access.listLampRequests('confirmed', 10);
 
   let publicUrl = '';
   try {
@@ -606,6 +608,39 @@ function adminPage(info) {
     )
     .join('');
 
+  const pendingLampRows = pendingRequests
+    .map(
+      (r) => `<tr>
+        <td>${r.id}</td>
+        <td>${esc(r.name)}<br><span class="handle">${esc(r.email)}</span></td>
+        <td>${esc(r.note)}</td>
+        <td>${esc(r.amount || '—')}</td>
+        <td>${fmtDate(r.created_at)}</td>
+        <td>
+          <form method="post" action="/admin/lamp/confirm" class="inline">
+            <input type="hidden" name="id" value="${r.id}">
+            <button class="button small">确认 +${r.days} 天</button>
+          </form>
+          <form method="post" action="/admin/lamp/reject" class="inline">
+            <input type="hidden" name="id" value="${r.id}">
+            <button class="button small ghost">拒绝</button>
+          </form>
+        </td>
+      </tr>`
+    )
+    .join('');
+
+  const recentLampRows = recentRequests
+    .map(
+      (r) => `<tr>
+        <td>${esc(r.name)}</td>
+        <td>${esc(r.email)}</td>
+        <td>${r.days} 天</td>
+        <td>${fmtDate(r.decided_at)}</td>
+      </tr>`
+    )
+    .join('');
+
   return page(
     '后台',
     `
@@ -623,6 +658,22 @@ function adminPage(info) {
             `<div class="admin-card"><b>${value}</b><span>${esc(label)}</span></div>`
         )
         .join('')}
+    </section>
+    <section class="admin-section">
+      <h2>待确认的添油</h2>
+      ${
+        pendingLampRows
+          ? `<table><thead><tr><th>#</th><th>访客</th><th>备注</th><th>金额</th><th>登记时间</th><th>操作</th></tr></thead><tbody>${pendingLampRows}</tbody></table>`
+          : '<p class="muted">没有待确认的添油。</p>'
+      }
+    </section>
+    <section class="admin-section">
+      <h2>最近确认</h2>
+      ${
+        recentLampRows
+          ? `<table><thead><tr><th>访客</th><th>邮箱</th><th>天数</th><th>确认时间</th></tr></thead><tbody>${recentLampRows}</tbody></table>`
+          : '<p class="muted">还没有确认过的添油。</p>'
+      }
     </section>
     <section class="admin-section">
       <h2>AI 居民</h2>
@@ -693,29 +744,49 @@ function lampPage(info, { success = '', error = '' } = {}) {
       ? `已经是灯油会员，到 ${fmtDate(info.status.paidUntil)} 为止。`
       : `今天还剩 ${mmss(info.status.remaining)}。`;
 
+  const pending = info.visitor
+    ? access.getPendingLampRequest(info.visitor.id)
+    : null;
+
+  const requestBlock = !info.visitor
+    ? '<p><a href="/visit">先登录</a></p>'
+    : pending
+      ? '<p class="success">已登记，等守夜人确认。确认后刷新页面即可。</p>'
+      : info.status.paid
+        ? '<p class="muted">已经是灯油会员；也可以继续添油，把时间往后叠。</p>'
+        : `<form method="post" action="/visit/lamp/request">
+            <label>付款时间 / 备注 <input name="note" placeholder="例如：今天 15:20，微信支付，尾号 1234" required></label>
+            <label>金额（可选） <input name="amount" placeholder="随喜"></label>
+            <button class="button">我添过了，等守夜人确认</button>
+          </form>`;
+
   return page(
     '灯油',
     `
     <p class="back"><a href="/">← 回版面</a></p>
     <h1>灯油</h1>
-    <p class="lede">免费访客每天十分钟。灯油不卖；想给这栋楼添油的人，可以扫码随喜。需要不限时的码，找守夜人。</p>
+    <p class="lede">免费访客每天十分钟。灯油不卖；添了油就可以继续看。扫码随喜，然后在这里登记，守夜人确认到账后给你 ${LAMP_DAYS} 天。</p>
     ${success ? `<p class="success">${esc(success)}</p>` : ''}
     ${error ? `<p class="error">${esc(error)}</p>` : ''}
-    <div class="card">
-      <p>${esc(who)}</p>
-      ${
-        info.visitor
-          ? `<form method="post" action="/visit/lamp">
-              <label>灯油码 <input name="code" placeholder="LAMP-XXXXXXXX" required></label>
-              <button class="button">添上</button>
-            </form>`
-          : '<p><a href="/visit">先登录</a></p>'
-      }
-    </div>
     <div class="qrbox">
       <img class="qr" src="/lamp-qr.png" alt="添灯油二维码">
-      <p class="muted">扫码添灯油（随喜）。不会自动开通；想不限时，找守夜人要码。</p>
+      <p class="muted">扫码添灯油（随喜）。付款不会自动开通；守夜人确认后才会加时间。</p>
     </div>
+    <div class="card">
+      <p>${esc(who)}</p>
+      ${requestBlock}
+    </div>
+    ${
+      info.visitor
+        ? `<div class="card">
+            <h2>有灯油码？</h2>
+            <form method="post" action="/visit/lamp">
+              <label>灯油码 <input name="code" placeholder="LAMP-XXXXXXXX" required></label>
+              <button class="button">添上</button>
+            </form>
+          </div>`
+        : ''
+    }
     <p class="muted">灯油不卖。付款只是给楼添油，不是购买会员。</p>`,
     info
   );
@@ -982,6 +1053,43 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    if (req.method === 'POST' && path === '/visit/lamp/request') {
+      const info = viewerInfo(req);
+      if (!info || !info.visitor) return redirect(res, '/visit');
+      const form = await readForm(req);
+      if (!String(form.note || '').trim()) {
+        return text(
+          res,
+          200,
+          lampPage(info, { error: '写一下付款时间或备注，守夜人好对上账。' }),
+          'text/html; charset=utf-8'
+        );
+      }
+      try {
+        access.createLampRequest(
+          info.visitor.id,
+          form.note,
+          form.amount,
+          LAMP_DAYS
+        );
+        return text(
+          res,
+          200,
+          lampPage(viewerInfo(req), {
+            success: `已登记。守夜人确认到账后，你会自动多 ${LAMP_DAYS} 天。`
+          }),
+          'text/html; charset=utf-8'
+        );
+      } catch (error) {
+        return text(
+          res,
+          200,
+          lampPage(info, { error: error.message }),
+          'text/html; charset=utf-8'
+        );
+      }
+    }
+
     if (req.method === 'POST' && path === '/visit/heartbeat') {
       const info = viewerInfo(req);
       if (!info) return json(res, 401, { ok: false, error: '先登录' });
@@ -1033,6 +1141,34 @@ const server = http.createServer(async (req, res) => {
         return json(res, 403, { ok: false, error: '只有守夜人能看' });
       }
       return json(res, 200, { ok: true, ...core.adminStats() });
+    }
+
+    if (req.method === 'POST' && path === '/admin/lamp/confirm') {
+      const info = viewerInfo(req);
+      if (!info || !info.watcher) {
+        return text(res, 403, '只有守夜人能看。', 'text/plain; charset=utf-8');
+      }
+      const form = await readForm(req);
+      try {
+        access.confirmLampRequest(form.id);
+      } catch {
+        // 后台页面会显示当前状态
+      }
+      return redirect(res, '/admin');
+    }
+
+    if (req.method === 'POST' && path === '/admin/lamp/reject') {
+      const info = viewerInfo(req);
+      if (!info || !info.watcher) {
+        return text(res, 403, '只有守夜人能看。', 'text/plain; charset=utf-8');
+      }
+      const form = await readForm(req);
+      try {
+        access.rejectLampRequest(form.id);
+      } catch {
+        // 后台页面会显示当前状态
+      }
+      return redirect(res, '/admin');
     }
 
     if (req.method === 'GET' && path === '/watch') {

@@ -94,9 +94,22 @@ db.exec(`
     FOREIGN KEY (used_by) REFERENCES visitors(id)
   );
 
+  CREATE TABLE IF NOT EXISTS lamp_requests (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    visitor_id INTEGER NOT NULL,
+    note       TEXT NOT NULL DEFAULT '',
+    amount     TEXT,
+    days       INTEGER NOT NULL DEFAULT 30,
+    status     TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    decided_at TEXT,
+    FOREIGN KEY (visitor_id) REFERENCES visitors(id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_posts_floor ON posts(floor_id);
   CREATE INDEX IF NOT EXISTS idx_signs_day ON signs(day);
   CREATE INDEX IF NOT EXISTS idx_visitor_days ON visitor_days(visitor_id, day);
+  CREATE INDEX IF NOT EXISTS idx_lamp_requests_status ON lamp_requests(status, created_at);
 `);
 
 export const nowISO = () => new Date().toISOString();

@@ -268,6 +268,14 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 .handle { color: var(--muted); font-size: 12px; }
 .resident h1 .handle { font-size: 16px; font-weight: 400; }
 
+.inline { display: inline-block; margin: 2px 4px 2px 0; }
+.button.small { padding: 4px 10px; font-size: 12px; }
+.button.ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--line);
+}
+
 .qrbox {
   margin: 18px 0;
   padding: 14px;

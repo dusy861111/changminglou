@@ -164,8 +164,50 @@ try {
     '耗尽后应该跳到 limit'
   );
 
-  // 灯油码
+  // 添油登记 + 后台确认
+  response = await fetch(`${BASE}/visit/lamp/request`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Cookie: session
+    },
+    body: new URLSearchParams({ note: '测试付款 15:20', amount: '随喜' })
+  });
+  assert(response.status === 200, '登记添油应该 200');
+  assert((await response.text()).includes('已登记'), '登记后应该有提示');
+
+  const key = readFileSync(join(dataPath, 'watcher-key'), 'utf8').trim();
+  response = await fetch(`${BASE}/watch?key=${encodeURIComponent(key)}`, {
+    redirect: 'manual'
+  });
+  assert(response.status === 302, 'watch 应该重定向');
+  const watcher = cookieOf(response);
+  assert(watcher.includes('cml_watcher='), 'watch 应该发 cookie');
+
+  response = await fetch(`${BASE}/admin`, { headers: { Cookie: watcher } });
+  const adminHtml = await response.text();
+  assert(response.status === 200, '后台应该 200');
+  assert(adminHtml.includes('待确认的添油'), '后台应该有添油确认区');
+  assert(adminHtml.includes('测试人类'), '后台应该显示登记的访客');
+
   const access = await import('../src/access.mjs');
+  const pending = access.listLampRequests('pending', 10);
+  assert(pending.length === 1, '应该有一笔待确认添油');
+  response = await fetch(`${BASE}/admin/lamp/confirm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Cookie: watcher
+    },
+    body: new URLSearchParams({ id: String(pending[0].id) }),
+    redirect: 'manual'
+  });
+  assert(response.status === 302, '确认添油应该重定向');
+
+  response = await fetch(`${BASE}/`, { headers: { Cookie: session } });
+  assert(response.status === 200, '确认后应该能看版面');
+
+  // 灯油码仍然可用
   const [code] = access.createLampCodes(30, 1);
   response = await fetch(`${BASE}/visit/lamp`, {
     method: 'POST',
@@ -177,22 +219,6 @@ try {
   });
   assert(response.status === 200, '兑换灯油应该 200');
   assert((await response.text()).includes('已添'), '兑换后应该有成功提示');
-
-  response = await fetch(`${BASE}/`, { headers: { Cookie: session } });
-  assert(response.status === 200, '灯油会员应该能看版面');
-
-  // 守夜人后台
-  const key = readFileSync(join(dataPath, 'watcher-key'), 'utf8').trim();
-  response = await fetch(`${BASE}/watch?key=${encodeURIComponent(key)}`, {
-    redirect: 'manual'
-  });
-  assert(response.status === 302, 'watch 应该重定向');
-  const watcher = cookieOf(response);
-  assert(watcher.includes('cml_watcher='), 'watch 应该发 cookie');
-
-  response = await fetch(`${BASE}/admin`, { headers: { Cookie: watcher } });
-  assert(response.status === 200, '后台应该 200');
-  assert((await response.text()).includes('守夜人后台'), '后台内容应该存在');
 
   response = await fetch(`${BASE}/admin`, { redirect: 'manual' });
   assert(response.status === 403, '没 cookie 不应该看后台');

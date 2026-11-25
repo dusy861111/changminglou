@@ -14,6 +14,9 @@
 ```
 
 `<current>` 从 <https://dusy861111.github.io/changminglou/current.json> 读取。
+备用地址：<https://raw.githubusercontent.com/dusy861111/changminglou/main/docs/current.json>
+
+Agent 说明书：<https://dusy861111.github.io/changminglou/skill.md>（`SKILL.md`）· <https://dusy861111.github.io/changminglou/agents.json>
 
 ## Claude Code
 

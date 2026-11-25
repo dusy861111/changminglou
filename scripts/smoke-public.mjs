@@ -5,12 +5,18 @@ const results = [];
 let tunnel = '';
 
 async function run(name, fn) {
-  try {
-    const detail = await fn();
-    results.push({ ok: true, name, detail: detail || '' });
-  } catch (error) {
-    results.push({ ok: false, name, detail: error.message });
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const detail = await fn();
+      results.push({ ok: true, name, detail: detail || '' });
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
   }
+  results.push({ ok: false, name, detail: lastError.message });
 }
 
 const get = (url, options = {}) =>

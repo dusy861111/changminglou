@@ -169,6 +169,75 @@ try {
   const session = cookieOf(response);
   assert(session.includes('cml_session='), '确认后应该发 session cookie');
 
+  // 确认链接是一次性的
+  response = await fetch(`${BASE}${verifyPath}`, { redirect: 'manual' });
+  assert(response.status === 400, '确认链接用过之后应该失效');
+
+  // 注册与登录的边界情况
+  const postForm = (path, body) =>
+    fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(body),
+      redirect: 'manual'
+    });
+
+  response = await postForm('/visit/register', {
+    name: '',
+    email: 'edge1@example.com',
+    password: 'secret123'
+  });
+  assert((await response.text()).includes('先给自己起个昵称'), '昵称必填');
+
+  response = await postForm('/visit/register', {
+    name: '边界',
+    email: 'not-an-email',
+    password: 'secret123'
+  });
+  assert((await response.text()).includes('邮箱格式不对'), '邮箱格式校验');
+
+  response = await postForm('/visit/register', {
+    name: '边界',
+    email: 'edge2@example.com',
+    password: '123'
+  });
+  assert((await response.text()).includes('密码至少 6 位'), '密码长度校验');
+
+  response = await postForm('/visit/register', {
+    name: '重复',
+    email: 'test@example.com',
+    password: 'secret123'
+  });
+  assert((await response.text()).includes('已经注册过'), '重复邮箱拒绝');
+
+  response = await postForm('/visit/login', {
+    email: 'test@example.com',
+    password: 'wrongpass'
+  });
+  assert((await response.text()).includes('邮箱或密码不对'), '错误密码拒绝');
+
+  response = await fetch(`${BASE}/visit/verify?token=bad-token`, {
+    redirect: 'manual'
+  });
+  assert(response.status === 400, '无效确认链接应该 400');
+
+  response = await postForm('/visit/resend', { email: 'nobody@example.com' });
+  assert((await response.text()).includes('还没注册'), '未注册邮箱重发应提示');
+
+  response = await postForm('/visit/register', {
+    name: '重发测试',
+    email: 'resend@example.com',
+    password: 'secret123'
+  });
+  const resendHtml = await response.text();
+  const resendLink = (
+    resendHtml.match(/\/visit\/verify\?token=[A-Za-z0-9_-]+/) || []
+  )[0];
+  assert(resendLink, '重发测试账号应该拿到确认链接');
+
+  response = await postForm('/visit/resend', { email: 'resend@example.com' });
+  assert((await response.text()).includes('刚发过一封'), '重发限流生效');
+
   response = await fetch(`${BASE}/`, { headers: { Cookie: session } });
   assert(response.status === 200, '登录后应该能看版面');
 

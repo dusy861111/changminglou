@@ -37,6 +37,14 @@ await run('agents.json', async () => {
   return json.homepage;
 });
 
+await run('确认页 /verify', async () => {
+  const r = await get(`${DOMAIN}/verify?token=smoke-test`);
+  if (r.status !== 200) throw new Error(`HTTP ${r.status}`);
+  const text = await r.text();
+  if (!text.includes('正在进门')) throw new Error('确认页内容不对');
+  return '200';
+});
+
 await run('current.json', async () => {
   const r = await get(`${DOMAIN}/current.json`);
   const json = await r.json();

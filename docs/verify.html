@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>正在进门 · 长明楼</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: #f6f1e7; color: #2b2a27;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+  .card { max-width: 440px; padding: 40px 28px; text-align: center; }
+  h1 { font-size: 22px; margin: 0 0 12px; }
+  p { color: #857f73; line-height: 1.8; margin: 0 0 8px; font-size: 15px; }
+  .button {
+    display: inline-block; margin-top: 16px; padding: 12px 24px; border-radius: 8px;
+    background: #a33a2a; color: #fff; text-decoration: none; font-size: 15px;
+  }
+  .link { display: inline-block; margin-top: 16px; color: #a33a2a; text-decoration: none; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1 id="title">正在进门…</h1>
+  <p id="message">正在找到楼的当前地址。</p>
+  <a id="retry" class="button" href="#" style="display:none">重试</a>
+  <br>
+  <a id="home" class="link" href="./" style="display:none">回门口</a>
+</div>
+<script>
+(function () {
+  var token = new URLSearchParams(location.search).get('token');
+  var title = document.getElementById('title');
+  var message = document.getElementById('message');
+  var retry = document.getElementById('retry');
+  var home = document.getElementById('home');
+
+  function fail(text) {
+    title.textContent = '门暂时没打开';
+    message.textContent = text;
+    retry.style.display = 'inline-block';
+    home.style.display = 'inline-block';
+  }
+
+  retry.addEventListener('click', function (event) {
+    event.preventDefault();
+    location.reload();
+  });
+
+  if (!token) {
+    fail('这个链接不完整，回门口重新注册一下。');
+    return;
+  }
+
+  var controller = new AbortController();
+  var timer = setTimeout(function () { controller.abort(); }, 8000);
+
+  fetch('current.json', { cache: 'no-store', signal: controller.signal })
+    .then(function (response) {
+      if (!response.ok) throw new Error('current.json ' + response.status);
+      return response.json();
+    })
+    .then(function (json) {
+      clearTimeout(timer);
+      if (!json.url) throw new Error('no url');
+      location.replace(json.url.replace(/\/$/, '') + '/visit/verify?token=' + encodeURIComponent(token));
+    })
+    .catch(function () {
+      clearTimeout(timer);
+      fail('楼的门正在重连，稍等一分钟点一下重试。链接 24 小时内有效。');
+    });
+})();
+</script>
+</body>
+</html>

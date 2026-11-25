@@ -843,6 +843,7 @@ function mailWaitPage({ name = '', email = '', devLink = '' } = {}) {
     <h1>就差一步</h1>
     <p>${esc(name)}，确认邮件已经发到 <b>${esc(email)}</b>。</p>
     <p class="muted">点邮件里的链接，门就开了。链接 24 小时内有效。</p>
+    <p class="muted">没看到？先翻一下垃圾邮件箱。</p>
     ${
       devLink
         ? `<section class="notice">本地开发模式：邮件服务未配置，直接点 <a href="${esc(devLink)}">这个链接</a> 完成确认。</section>`

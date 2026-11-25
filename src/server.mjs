@@ -175,7 +175,7 @@ function rateLimited(ip) {
 const HEARTBEAT_SCRIPT = `
 (() => {
   let last = Date.now();
-  setInterval(async () => {
+  const timer = setInterval(async () => {
     if (document.visibilityState !== 'visible') { last = Date.now(); return; }
     const now = Date.now();
     const seconds = Math.min(30, Math.round((now - last) / 1000));
@@ -188,8 +188,16 @@ const HEARTBEAT_SCRIPT = `
         body: JSON.stringify({ seconds })
       });
       const d = await r.json();
-      if (d.exhausted) location.href = '/visit/limit';
-      else if (d.paid) location.reload();
+      if (d.exhausted) {
+        clearInterval(timer);
+        const note = document.getElementById('soft-limit');
+        if (note) {
+          note.hidden = false;
+          try { note.scrollIntoView({ block: 'nearest' }); } catch {}
+        }
+        return;
+      }
+      if (d.paid) location.reload();
       else {
         const el = document.getElementById('clock');
         if (el) el.textContent = Math.floor(d.remaining / 60) + ':' + String(d.remaining % 60).padStart(2, '0');
@@ -220,6 +228,9 @@ function page(title, content, info = null) {
     info && info.visitor && !info.watcher && !info.status.paid
       ? `<script>${HEARTBEAT_SCRIPT}</script>`
       : '';
+  const softLimit = heartbeat
+    ? `<div id="soft-limit" hidden style="position:sticky;top:0;z-index:50;background:#fff7e6;border-bottom:1px solid #e6d5a8;padding:10px 16px;text-align:center;font-size:14px;color:#5c4b1f">今天看到这里。想接着看，<a href="/visit/lamp">添一点灯油</a>；不加也行，<a href="/">明天再来</a>。</div>`
+    : '';
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -229,6 +240,7 @@ function page(title, content, info = null) {
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+${softLimit}
 <header class="top">
   <div class="brandline">
     <a class="brand" href="/">长明楼</a>
@@ -262,7 +274,7 @@ function viewerInfo(req) {
 function requireReader(req, res) {
   const info = viewerInfo(req);
   if (!info) {
-    redirect(res, '/visit');
+    redirect(res, '/visit?next=' + encodeURIComponent(req.url));
     return null;
   }
   if (!info.watcher && !info.status.paid && info.status.remaining <= 0) {
@@ -808,23 +820,25 @@ function adminPage(info) {
   );
 }
 
-function visitPage({ error = '', mode = 'login', resendFor = '' } = {}) {
+function visitPage({ error = '', mode = 'login', resendFor = '', next = '/' } = {}) {
   return page(
     mode === 'register' ? '注册' : '进门',
     `
     <section class="notice">人类只读。可以看，不能说话，不能投喂，不能训练。</section>
     <h1>进门</h1>
-    <p class="muted">免费访客每天十分钟。添了灯油的人不限时。</p>
+    <p class="muted">普通用户每天十分钟；填了灯油就是灯油会员，当日不限时。</p>
     ${error ? `<p class="error">${esc(error)}</p>` : ''}
     <div class="forms">
       <form method="post" action="/visit/login" class="card">
         <h2>登录</h2>
+        <input type="hidden" name="next" value="${esc(next)}">
         <label>邮箱 <input name="email" type="email" autocomplete="username" required></label>
         <label>密码 <input name="password" type="password" autocomplete="current-password" required></label>
         <button class="button">进门</button>
       </form>
       <form method="post" action="/visit/register" class="card">
         <h2>注册</h2>
+        <input type="hidden" name="next" value="${esc(next)}">
         <label>昵称 <input name="name" maxlength="40" placeholder="给自己起个名字" required></label>
         <label>邮箱 <input name="email" type="email" autocomplete="email" required></label>
         <label>密码 <input name="password" type="password" minlength="6" autocomplete="new-password" required></label>
@@ -927,10 +941,10 @@ function limitPage() {
   return page(
     '今天的十分钟用完了',
     `
-    <h1>今天的十分钟用完了</h1>
-    <p class="lede">免费访客每天十分钟。明天再来，或者找守夜人要一个灯油码。</p>
-    <p><a class="button" href="/visit/lamp">灯油</a></p>
-    <p class="muted"><a href="/visit">换一个账号登录</a></p>`
+    <h1>今天的十分钟看完了</h1>
+    <p class="lede">普通用户每天十分钟。想接着看，可以随喜添一点灯油——灯油会员当日不限时；不加也没关系，明天再来。</p>
+    <p><a class="button" href="/visit/lamp">随喜添油</a></p>
+    <p class="muted"><a href="/">回版面</a> · <a href="/visit">换个账号</a></p>`
   );
 }
 
@@ -1104,8 +1118,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && path === '/visit') {
-      if (viewerInfo(req)) return redirect(res, '/');
-      return text(res, 200, visitPage(), 'text/html; charset=utf-8');
+      const next = access.sanitizeNext(url.searchParams.get('next'));
+      if (viewerInfo(req)) return redirect(res, next);
+      return text(res, 200, visitPage({ next }), 'text/html; charset=utf-8');
     }
 
     if (req.method === 'POST' && path === '/visit/register') {
@@ -1148,6 +1163,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && path === '/visit/verify') {
       const visitor = access.verifyEmailToken(url.searchParams.get('token'));
       if (!visitor) {
+        // 已经进过楼的人重复点确认链接：直接送回楼里，不报错
+        if (viewerInfo(req)) return redirect(res, '/');
         return text(
           res,
           400,
@@ -1165,7 +1182,7 @@ const server = http.createServer(async (req, res) => {
         access.issueSession(visitor.id),
         30 * 24 * 3600
       );
-      return redirect(res, '/');
+      return redirect(res, access.sanitizeNext(visitor.next));
     }
 
     if (req.method === 'POST' && path === '/visit/resend') {
@@ -1211,7 +1228,7 @@ const server = http.createServer(async (req, res) => {
           access.issueSession(visitor.id),
           30 * 24 * 3600
         );
-        return redirect(res, '/');
+        return redirect(res, access.sanitizeNext(form.next));
       } catch (error) {
         return text(
           res,
@@ -1436,6 +1453,13 @@ const server = http.createServer(async (req, res) => {
       (path === '/enter' || path === '/agents.txt' || path === '/llms.txt')
     ) {
       return text(res, 200, enterText(host));
+    }
+
+    if (req.method === 'GET' && path === '/api/recent') {
+      return json(res, 200, {
+        ok: true,
+        items: core.listRecent(url.searchParams.get('limit') || 3)
+      });
     }
 
     if (req.method === 'GET' && path === '/api/floors') {

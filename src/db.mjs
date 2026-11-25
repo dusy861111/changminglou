@@ -78,7 +78,8 @@ db.exec(`
     email_verified INTEGER NOT NULL DEFAULT 0,
     verify_token   TEXT,
     verify_expires TEXT,
-    verify_sent_at TEXT
+    verify_sent_at TEXT,
+    verify_next    TEXT
   );
 
   CREATE TABLE IF NOT EXISTS visitor_days (
@@ -131,6 +132,10 @@ if (!visitorColumns.some((column) => column.name === 'email_verified')) {
            ALTER TABLE visitors ADD COLUMN verify_expires TEXT;
            ALTER TABLE visitors ADD COLUMN verify_sent_at TEXT;`);
   db.exec('UPDATE visitors SET email_verified = 1');
+}
+const visitorColumns2 = db.prepare('PRAGMA table_info(visitors)').all();
+if (!visitorColumns2.some((column) => column.name === 'verify_next')) {
+  db.exec('ALTER TABLE visitors ADD COLUMN verify_next TEXT');
 }
 
 export const nowISO = () => new Date().toISOString();

@@ -153,6 +153,14 @@ const newToken = () => randomBytes(24).toString('base64url');
 const verifyExpiry = () =>
   new Date(Date.now() + VERIFY_HOURS * 3600 * 1000).toISOString();
 
+// 只允许站内相对路径，防止确认后被带去外站
+export function sanitizeNext(value) {
+  const next = String(value || '').trim();
+  if (!next.startsWith('/') || next.startsWith('//')) return '/';
+  if (next.length > 200) return '/';
+  return next;
+}
+
 // 注册：邮箱 + 昵称 + 密码。邮箱需点邮件里的链接确认后才算进门。
 export function registerVisitor(input = {}) {
   const email = String(input.email || '').trim().toLowerCase();
@@ -169,14 +177,25 @@ export function registerVisitor(input = {}) {
   const salt = randomBytes(16).toString('hex');
   const hash = scryptSync(password, salt, 64).toString('hex');
   const token = newToken();
+  const next = sanitizeNext(input.next);
   const result = db
     .prepare(
       `INSERT INTO visitors
          (email, name, password_hash, salt, created_at,
-          email_verified, verify_token, verify_expires, verify_sent_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
+          email_verified, verify_token, verify_expires, verify_sent_at, verify_next)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`
     )
-    .run(email, name, hash, salt, nowISO(), token, verifyExpiry(), nowISO());
+    .run(
+      email,
+      name,
+      hash,
+      salt,
+      nowISO(),
+      token,
+      verifyExpiry(),
+      nowISO(),
+      next
+    );
 
   const visitor = db
     .prepare('SELECT * FROM visitors WHERE id = ?')
@@ -193,12 +212,15 @@ export function verifyEmailToken(tokenInput) {
     .get(token);
   if (!visitor) return null;
   if (visitor.verify_expires && visitor.verify_expires < nowISO()) return null;
+  const next = sanitizeNext(visitor.verify_next);
   db.prepare(
     `UPDATE visitors
-       SET email_verified = 1, verify_token = NULL, verify_expires = NULL
+       SET email_verified = 1, verify_token = NULL, verify_expires = NULL, verify_next = NULL
      WHERE id = ?`
   ).run(visitor.id);
-  return db.prepare('SELECT * FROM visitors WHERE id = ?').get(visitor.id);
+  const fresh = db.prepare('SELECT * FROM visitors WHERE id = ?').get(visitor.id);
+  fresh.next = next;
+  return fresh;
 }
 
 // 重发确认邮件：一分钟内最多一封。

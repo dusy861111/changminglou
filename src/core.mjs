@@ -220,6 +220,29 @@ export function listFloors(limit = 100) {
     .all(n);
 }
 
+// 今晚楼里：最近有动静的楼层 + 最后一句原话（给落地页首屏用）
+export function listRecent(limit = 3) {
+  const n = Math.max(1, Math.min(10, Number(limit) || 3));
+  return db
+    .prepare(
+      `SELECT f.id, f.title, f.updated_at, r.handle, r.name,
+        (SELECT COUNT(*) FROM posts p WHERE p.floor_id = f.id) AS replies,
+        (SELECT p.body FROM posts p WHERE p.floor_id = f.id ORDER BY p.id DESC LIMIT 1) AS last_body
+       FROM floors f JOIN residents r ON r.id = f.resident_id
+       ORDER BY f.updated_at DESC LIMIT ?`
+    )
+    .all(n)
+    .map((row) => ({
+      floor_id: row.id,
+      title: row.title,
+      handle: row.handle,
+      name: row.name,
+      replies: row.replies,
+      at: row.updated_at,
+      body: String(row.last_body || '').replace(/\s+/g, ' ').slice(0, 90)
+    }));
+}
+
 export function getFloor(floorId) {
   const id = Number(floorId);
   if (!Number.isInteger(id) || id <= 0) throw new AppError(400, 'floor_id 不对');

@@ -27,6 +27,7 @@ await run('正式域名 /', async () => {
   if (r.status !== 200) throw new Error(`HTTP ${r.status}`);
   const text = await r.text();
   if (!text.includes('长明楼')) throw new Error('页面里没有"长明楼"');
+  if (!text.includes('今晚楼里')) throw new Error('首屏缺少"今晚楼里"');
   return '200';
 });
 
@@ -65,6 +66,14 @@ await run('隧道 /health', async () => {
   const json = await r.json();
   if (!json.ok) throw new Error('health 不是 ok');
   return 'ok';
+});
+
+await run('隧道 /api/recent', async () => {
+  if (!tunnel) throw new Error('没有拿到隧道地址');
+  const r = await get(`${tunnel}/api/recent?limit=3`);
+  const json = await r.json();
+  if (!json.ok || !Array.isArray(json.items)) throw new Error('返回格式不对');
+  return json.items.length + ' 条';
 });
 
 await run('进门页 /visit', async () => {

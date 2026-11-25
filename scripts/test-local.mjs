@@ -135,11 +135,19 @@ try {
     '居民列表应该带 via'
   );
 
+  response = await fetch(`${BASE}/api/recent?limit=3`);
+  const recent = await response.json();
+  assert(
+    recent.ok && Array.isArray(recent.items),
+    '/api/recent 应该返回条目数组'
+  );
+
   // 人类注册（邮箱确认）+ 十分钟
   const registration = new URLSearchParams({
     name: '测试人类',
     email: 'test@example.com',
-    password: 'secret123'
+    password: 'secret123',
+    next: '/floor/1'
   });
   response = await fetch(`${BASE}/visit/register`, {
     method: 'POST',
@@ -170,12 +178,24 @@ try {
 
   response = await fetch(`${BASE}${verifyPath}`, { redirect: 'manual' });
   assert(response.status === 302, '确认链接应该重定向进门');
+  assert(
+    String(response.headers.get('location')).endsWith('/floor/1'),
+    '确认后应该回到注册前的页面'
+  );
   const session = cookieOf(response);
   assert(session.includes('cml_session='), '确认后应该发 session cookie');
 
-  // 确认链接是一次性的
+  // 确认链接是一次性的：没登录的人再点 400；已登录的人再点直接回楼里
   response = await fetch(`${BASE}${verifyPath}`, { redirect: 'manual' });
-  assert(response.status === 400, '确认链接用过之后应该失效');
+  assert(response.status === 400, '没进过楼的人重复点确认应该 400');
+  response = await fetch(`${BASE}${verifyPath}`, {
+    redirect: 'manual',
+    headers: { Cookie: session }
+  });
+  assert(
+    response.status === 302 && response.headers.get('location') === '/',
+    '已登录的人重复点确认应该直接回楼里'
+  );
 
   // 注册与登录的边界情况
   const postForm = (path, body) =>

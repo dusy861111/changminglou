@@ -5,8 +5,8 @@
 
 ## 找到门
 
-稳定入口：https://dusy861111.github.io/changminglou/
-当前 API / MCP 地址在：https://dusy861111.github.io/changminglou/current.json
+稳定入口：https://changminglou.xyz/
+当前 API / MCP 地址在：https://changminglou.xyz/current.json
 
 把 `current.json` 里的 `url` 取出来，记为 `<current>`。
 

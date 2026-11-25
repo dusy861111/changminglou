@@ -29,6 +29,24 @@ const nextHtml = indexHtml.replace(
 );
 const htmlChanged = nextHtml !== indexHtml;
 
+// 确认页也保一份兜底地址：current.json 偶发取不到时直接跳
+const verifyPath = join(ROOT, 'docs', 'verify.html');
+let verifyChanged = false;
+try {
+  const verifyHtml = readFileSync(verifyPath, 'utf8');
+  const nextVerify = verifyHtml.replace(
+    /var FALLBACK = '[^']*';/,
+    `var FALLBACK = '${url}';`
+  );
+  verifyChanged = nextVerify !== verifyHtml;
+  if (verifyChanged) {
+    writeFileSync(verifyPath, nextVerify);
+    console.log('docs/verify.html 的 FALLBACK 已更新');
+  }
+} catch {
+  // 没有 verify.html 就跳过
+}
+
 if (previous !== next) {
   writeFileSync(target, next);
   console.log(`docs/current.json -> ${url}`);
@@ -40,10 +58,13 @@ if (htmlChanged) {
   console.log('docs/index.html 的 FALLBACK 已更新');
 }
 
-if (process.argv.includes('--push') && (previous !== next || htmlChanged)) {
+if (
+  process.argv.includes('--push') &&
+  (previous !== next || htmlChanged || verifyChanged)
+) {
   try {
     execSync(
-      'git add docs/current.json docs/index.html && git commit -m "update entrance" && git push',
+      'git add docs/current.json docs/index.html docs/verify.html && git commit -m "update entrance" && git push',
       { cwd: ROOT, stdio: 'inherit' }
     );
   } catch {

@@ -54,23 +54,49 @@
     return;
   }
 
-  var controller = new AbortController();
-  var timer = setTimeout(function () { controller.abort(); }, 8000);
+  // 楼当前的地址。发布脚本会自动把最新隧道地址写进这里作为兜底。
+  var FALLBACK = 'https://90b90b539c4329.app.lhr.life';
+  var attempts = 0;
 
-  fetch('current.json', { cache: 'no-store', signal: controller.signal })
-    .then(function (response) {
-      if (!response.ok) throw new Error('current.json ' + response.status);
-      return response.json();
-    })
-    .then(function (json) {
-      clearTimeout(timer);
-      if (!json.url) throw new Error('no url');
-      location.replace(json.url.replace(/\/$/, '') + '/visit/verify?token=' + encodeURIComponent(token));
-    })
-    .catch(function () {
-      clearTimeout(timer);
-      fail('楼的门正在重连，稍等一分钟点一下重试。链接 24 小时内有效。');
-    });
+  function go(url) {
+    location.replace(
+      url.replace(/\/$/, '') +
+        '/visit/verify?token=' +
+        encodeURIComponent(token)
+    );
+  }
+
+  function attempt() {
+    attempts += 1;
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 10000);
+    fetch('current.json?_=' + Date.now(), { cache: 'no-store', signal: controller.signal })
+      .then(function (response) {
+        if (!response.ok) throw new Error('current.json ' + response.status);
+        return response.json();
+      })
+      .then(function (json) {
+        clearTimeout(timer);
+        if (!json.url) throw new Error('no url');
+        go(json.url);
+      })
+      .catch(function () {
+        clearTimeout(timer);
+        if (attempts < 2) {
+          message.textContent = '正在再试一次…';
+          setTimeout(attempt, 1200);
+          return;
+        }
+        if (FALLBACK) {
+          message.textContent = '正在换一条路进门…';
+          go(FALLBACK);
+          return;
+        }
+        fail('楼的门正在重连，稍等一分钟点一下重试。链接 24 小时内有效。');
+      });
+  }
+
+  attempt();
 })();
 </script>
 </body>

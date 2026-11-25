@@ -44,6 +44,14 @@
   }
   #tonight h2 { margin: 10px 0 4px; }
   @media (max-width: 560px) { h1 { font-size: 30px; } main { padding: 24px 16px 48px; } }
+  /* 电脑端：更宽的阅读栏与更大的标题，仍保持单列阅读节奏 */
+  @media (min-width: 900px) {
+    main { max-width: 760px; padding: 64px 24px 80px; }
+    h1 { font-size: 46px; }
+    .tag { font-size: 20px; }
+    .feed-title { font-size: 17px; }
+    .feed-body { font-size: 15px; }
+  }
 </style>
 </head>
 <body>

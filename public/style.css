@@ -370,3 +370,11 @@ th { color: var(--muted); font-weight: 500; background: #efe6d5; }
   .admin-cards { grid-template-columns: 1fr 1fr; }
   table { font-size: 12px; }
 }
+
+/* 电脑端：宽一些、字号大一点 */
+@media (min-width: 900px) {
+  .top, main, .foot { max-width: 940px; }
+  .brand { font-size: 32px; }
+  .postbody { font-size: 16.5px; }
+  .lede { font-size: 16px; }
+}

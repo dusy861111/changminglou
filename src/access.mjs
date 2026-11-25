@@ -146,50 +146,84 @@ export function addSeconds(visitorId, seconds) {
 }
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const PHONE_RE = /^1[3-9]\d{9}$/;
+const VERIFY_HOURS = 24;
+const RESEND_SECONDS = 60;
 
-// 账号名可以是邮箱或手机号。不验证、不发任何邮件或短信。
-export function normalizeIdentifier(raw) {
-  const value = String(raw || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[\s()（）-]/g, '');
-  const digits = value.replace(/^\+?86/, '');
-  return /^\d{11}$/.test(digits) ? digits : value;
-}
+const newToken = () => randomBytes(24).toString('base64url');
+const verifyExpiry = () =>
+  new Date(Date.now() + VERIFY_HOURS * 3600 * 1000).toISOString();
 
-function isIdentifier(value) {
-  return EMAIL_RE.test(value) || PHONE_RE.test(value);
-}
-
+// 注册：邮箱 + 昵称 + 密码。邮箱需点邮件里的链接确认后才算进门。
 export function registerVisitor(input = {}) {
-  const email = normalizeIdentifier(input.email || input.identifier);
+  const email = String(input.email || '').trim().toLowerCase();
   const name = String(input.name || '').trim().slice(0, 40);
   const password = String(input.password || '');
 
-  if (!isIdentifier(email)) throw new Error('请填邮箱或手机号');
-  if (!name) throw new Error('需要一个名字');
+  if (!EMAIL_RE.test(email)) throw new Error('邮箱格式不对');
+  if (!name) throw new Error('先给自己起个昵称');
   if (password.length < 6) throw new Error('密码至少 6 位');
   if (db.prepare('SELECT id FROM visitors WHERE email = ?').get(email)) {
-    throw new Error('这个账号已经注册过');
+    throw new Error('这个邮箱已经注册过');
   }
 
   const salt = randomBytes(16).toString('hex');
   const hash = scryptSync(password, salt, 64).toString('hex');
+  const token = newToken();
   const result = db
     .prepare(
-      `INSERT INTO visitors (email, name, password_hash, salt, created_at)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO visitors
+         (email, name, password_hash, salt, created_at,
+          email_verified, verify_token, verify_expires, verify_sent_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
     )
-    .run(email, name, hash, salt, nowISO());
+    .run(email, name, hash, salt, nowISO(), token, verifyExpiry(), nowISO());
 
-  return db
+  const visitor = db
     .prepare('SELECT * FROM visitors WHERE id = ?')
     .get(Number(result.lastInsertRowid));
+  return { visitor, token };
+}
+
+// 点邮件里的链接：token 有效就标记已验证，并作废 token。
+export function verifyEmailToken(tokenInput) {
+  const token = String(tokenInput || '').trim();
+  if (!token) return null;
+  const visitor = db
+    .prepare('SELECT * FROM visitors WHERE verify_token = ?')
+    .get(token);
+  if (!visitor) return null;
+  if (visitor.verify_expires && visitor.verify_expires < nowISO()) return null;
+  db.prepare(
+    `UPDATE visitors
+       SET email_verified = 1, verify_token = NULL, verify_expires = NULL
+     WHERE id = ?`
+  ).run(visitor.id);
+  return db.prepare('SELECT * FROM visitors WHERE id = ?').get(visitor.id);
+}
+
+// 重发确认邮件：一分钟内最多一封。
+export function resendVerification(emailInput) {
+  const email = String(emailInput || '').trim().toLowerCase();
+  const visitor = db
+    .prepare('SELECT * FROM visitors WHERE email = ?')
+    .get(email);
+  if (!visitor) throw new Error('这个邮箱还没注册');
+  if (visitor.email_verified) throw new Error('这个邮箱已经确认过了');
+  if (
+    visitor.verify_sent_at &&
+    Date.now() - Date.parse(visitor.verify_sent_at) < RESEND_SECONDS * 1000
+  ) {
+    throw new Error('刚发过一封，稍等一分钟再试');
+  }
+  const token = newToken();
+  db.prepare(
+    'UPDATE visitors SET verify_token = ?, verify_expires = ?, verify_sent_at = ? WHERE id = ?'
+  ).run(token, verifyExpiry(), nowISO(), visitor.id);
+  return { visitor, token };
 }
 
 export function loginVisitor(emailInput, passwordInput) {
-  const email = normalizeIdentifier(emailInput);
+  const email = String(emailInput || '').trim().toLowerCase();
   const password = String(passwordInput || '');
   const visitor = db
     .prepare('SELECT * FROM visitors WHERE email = ?')
@@ -203,6 +237,13 @@ export function loginVisitor(emailInput, passwordInput) {
     !timingSafeEqual(candidate, expected)
   ) {
     throw new Error('邮箱或密码不对');
+  }
+
+  if (!visitor.email_verified) {
+    const unverified = new Error('邮箱还没确认，去邮件里点一下链接');
+    unverified.code = 'unverified';
+    unverified.email = visitor.email;
+    throw unverified;
   }
 
   db.prepare('UPDATE visitors SET last_seen_at = ? WHERE id = ?').run(

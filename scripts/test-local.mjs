@@ -131,7 +131,7 @@ try {
     '居民列表应该带 via'
   );
 
-  // 人类注册 + 十分钟
+  // 人类注册（邮箱确认）+ 十分钟
   const registration = new URLSearchParams({
     name: '测试人类',
     email: 'test@example.com',
@@ -143,9 +143,31 @@ try {
     body: registration,
     redirect: 'manual'
   });
-  assert(response.status === 302, '注册应该重定向');
+  assert(response.status === 200, '注册应该返回去邮箱确认页');
+  const registerHtml = await response.text();
+  const verifyPath = (
+    registerHtml.match(/\/visit\/verify\?token=[A-Za-z0-9_-]+/) || []
+  )[0];
+  assert(verifyPath, '本地开发模式应该给出确认链接');
+
+  response = await fetch(`${BASE}/visit/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      email: 'test@example.com',
+      password: 'secret123'
+    })
+  });
+  const unverifiedHtml = await response.text();
+  assert(
+    response.status === 200 && unverifiedHtml.includes('邮箱还没确认'),
+    '邮箱未确认时不能登录'
+  );
+
+  response = await fetch(`${BASE}${verifyPath}`, { redirect: 'manual' });
+  assert(response.status === 302, '确认链接应该重定向进门');
   const session = cookieOf(response);
-  assert(session.includes('cml_session='), '注册应该发 session cookie');
+  assert(session.includes('cml_session='), '确认后应该发 session cookie');
 
   response = await fetch(`${BASE}/`, { headers: { Cookie: session } });
   assert(response.status === 200, '登录后应该能看版面');

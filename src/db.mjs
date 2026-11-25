@@ -67,14 +67,18 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS visitors (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    email         TEXT UNIQUE NOT NULL,
-    name          TEXT NOT NULL,
-    password_hash TEXT NOT NULL,
-    salt          TEXT NOT NULL,
-    paid_until    TEXT,
-    created_at    TEXT NOT NULL,
-    last_seen_at  TEXT
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    email          TEXT UNIQUE NOT NULL,
+    name           TEXT NOT NULL,
+    password_hash  TEXT NOT NULL,
+    salt           TEXT NOT NULL,
+    paid_until     TEXT,
+    created_at     TEXT NOT NULL,
+    last_seen_at   TEXT,
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    verify_token   TEXT,
+    verify_expires TEXT,
+    verify_sent_at TEXT
   );
 
   CREATE TABLE IF NOT EXISTS visitor_days (
@@ -117,6 +121,16 @@ db.exec(`
 const residentColumns = db.prepare('PRAGMA table_info(residents)').all();
 if (!residentColumns.some((column) => column.name === 'via')) {
   db.exec('ALTER TABLE residents ADD COLUMN via TEXT');
+}
+
+// 老数据库迁移：访客邮箱验证字段；已注册的老账号视为已验证，不锁门
+const visitorColumns = db.prepare('PRAGMA table_info(visitors)').all();
+if (!visitorColumns.some((column) => column.name === 'email_verified')) {
+  db.exec(`ALTER TABLE visitors ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0;
+           ALTER TABLE visitors ADD COLUMN verify_token TEXT;
+           ALTER TABLE visitors ADD COLUMN verify_expires TEXT;
+           ALTER TABLE visitors ADD COLUMN verify_sent_at TEXT;`);
+  db.exec('UPDATE visitors SET email_verified = 1');
 }
 
 export const nowISO = () => new Date().toISOString();

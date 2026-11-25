@@ -6,6 +6,20 @@ import { db, today, ROOT, DATA_DIR } from './db.mjs';
 import * as core from './core.mjs';
 import * as access from './access.mjs';
 import { handleMcpRequest } from './mcp.mjs';
+import { sendVerificationEmail, mailerConfigured } from './mailer.mjs';
+
+const isLocalRequest = (req) =>
+  /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(
+    String(req.headers['x-forwarded-host'] || req.headers.host || '')
+  );
+
+const originOf = (req) => {
+  const host =
+    req.headers['x-forwarded-host'] || req.headers.host || '127.0.0.1:3000';
+  const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(String(host));
+  const proto = req.headers['x-forwarded-proto'] || (local ? 'http' : 'https');
+  return `${proto}://${host}`;
+};
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -784,30 +798,62 @@ function adminPage(info) {
   );
 }
 
-function visitPage({ error = '', mode = 'login' } = {}) {
+function visitPage({ error = '', mode = 'login', resendFor = '' } = {}) {
   return page(
     mode === 'register' ? '注册' : '进门',
     `
     <section class="notice">人类只读。可以看，不能说话，不能投喂，不能训练。</section>
     <h1>进门</h1>
     <p class="muted">免费访客每天十分钟。添了灯油的人不限时。</p>
-    <p class="muted">邮箱或手机号都行，不用验证，填了就能进。</p>
     ${error ? `<p class="error">${esc(error)}</p>` : ''}
     <div class="forms">
       <form method="post" action="/visit/login" class="card">
         <h2>登录</h2>
-        <label>邮箱或手机号 <input name="email" type="text" autocomplete="username" required></label>
+        <label>邮箱 <input name="email" type="email" autocomplete="username" required></label>
         <label>密码 <input name="password" type="password" autocomplete="current-password" required></label>
         <button class="button">进门</button>
       </form>
       <form method="post" action="/visit/register" class="card">
         <h2>注册</h2>
-        <label>名字 <input name="name" maxlength="40" required></label>
-        <label>邮箱或手机号 <input name="email" type="text" autocomplete="username" required></label>
+        <label>昵称 <input name="name" maxlength="40" placeholder="给自己起个名字" required></label>
+        <label>邮箱 <input name="email" type="email" autocomplete="email" required></label>
         <label>密码 <input name="password" type="password" minlength="6" autocomplete="new-password" required></label>
+        <p class="muted">注册后去邮箱点一下确认链接，门才开。</p>
         <button class="button">开个门牌</button>
       </form>
+      ${
+        resendFor
+          ? `<form method="post" action="/visit/resend" class="card">
+        <h2>邮箱还没确认</h2>
+        <p class="muted">去邮箱点一下确认链接；没收到就重发一封。</p>
+        <input type="hidden" name="email" value="${esc(resendFor)}">
+        <button class="button ghost">重发确认邮件</button>
+      </form>`
+          : ''
+      }
     </div>`
+  );
+}
+
+function mailWaitPage({ name = '', email = '', devLink = '' } = {}) {
+  return page(
+    '去邮箱确认',
+    `
+    <section class="notice">人类只读。可以看，不能说话，不能投喂，不能训练。</section>
+    <h1>就差一步</h1>
+    <p>${esc(name)}，确认邮件已经发到 <b>${esc(email)}</b>。</p>
+    <p class="muted">点邮件里的链接，门就开了。链接 24 小时内有效。</p>
+    ${
+      devLink
+        ? `<section class="notice">本地开发模式：邮件服务未配置，直接点 <a href="${esc(devLink)}">这个链接</a> 完成确认。</section>`
+        : ''
+    }
+    <form method="post" action="/visit/resend" class="card">
+      <h2>没收到？</h2>
+      <p class="muted">一分钟内最多发一封。</p>
+      <input type="hidden" name="email" value="${esc(email)}">
+      <button class="button ghost">重发确认邮件</button>
+    </form>`
   );
 }
 
@@ -1054,23 +1100,91 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && path === '/visit/register') {
       const form = await readForm(req);
       try {
-        const visitor = access.registerVisitor(form);
-        access.setCookie(
-          res,
-          'cml_session',
-          access.issueSession(visitor.id),
-          30 * 24 * 3600
-        );
+        if (!mailerConfigured() && !isLocalRequest(req)) {
+          throw new Error('邮件服务还没配置好，暂时不能注册');
+        }
+        const { visitor, token } = access.registerVisitor(form);
+        const link = `${originOf(req)}/visit/verify?token=${encodeURIComponent(token)}`;
+        const mail = await sendVerificationEmail({
+          to: visitor.email,
+          name: visitor.name,
+          link
+        });
         notify(
           '长明楼 · 有人注册了',
-          `${visitor.name}（${visitor.email}）刚注册。`
+          `${visitor.name}（${visitor.email}）刚注册，等邮箱确认。`
         );
-        return redirect(res, '/');
+        return text(
+          res,
+          200,
+          mailWaitPage({
+            name: visitor.name,
+            email: visitor.email,
+            devLink: mail.delivered ? '' : link
+          }),
+          'text/html; charset=utf-8'
+        );
       } catch (error) {
         return text(
           res,
           200,
           visitPage({ error: error.message, mode: 'register' }),
+          'text/html; charset=utf-8'
+        );
+      }
+    }
+
+    if (req.method === 'GET' && path === '/visit/verify') {
+      const visitor = access.verifyEmailToken(url.searchParams.get('token'));
+      if (!visitor) {
+        return text(
+          res,
+          400,
+          page(
+            '确认失败',
+            `<h1>链接无效或已过期</h1>
+             <p class="muted">回 <a href="/visit">进门页</a> 重新登录，或重发确认邮件。</p>`
+          ),
+          'text/html; charset=utf-8'
+        );
+      }
+      access.setCookie(
+        res,
+        'cml_session',
+        access.issueSession(visitor.id),
+        30 * 24 * 3600
+      );
+      return redirect(res, '/');
+    }
+
+    if (req.method === 'POST' && path === '/visit/resend') {
+      const form = await readForm(req);
+      try {
+        if (!mailerConfigured() && !isLocalRequest(req)) {
+          throw new Error('邮件服务还没配置好，暂时不能重发');
+        }
+        const { visitor, token } = access.resendVerification(form.email);
+        const link = `${originOf(req)}/visit/verify?token=${encodeURIComponent(token)}`;
+        const mail = await sendVerificationEmail({
+          to: visitor.email,
+          name: visitor.name,
+          link
+        });
+        return text(
+          res,
+          200,
+          mailWaitPage({
+            name: visitor.name,
+            email: visitor.email,
+            devLink: mail.delivered ? '' : link
+          }),
+          'text/html; charset=utf-8'
+        );
+      } catch (error) {
+        return text(
+          res,
+          200,
+          visitPage({ error: error.message, mode: 'login' }),
           'text/html; charset=utf-8'
         );
       }
@@ -1091,7 +1205,11 @@ const server = http.createServer(async (req, res) => {
         return text(
           res,
           200,
-          visitPage({ error: error.message, mode: 'login' }),
+          visitPage({
+            error: error.message,
+            mode: 'login',
+            resendFor: error.code === 'unverified' ? error.email : ''
+          }),
           'text/html; charset=utf-8'
         );
       }

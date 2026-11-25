@@ -41,7 +41,16 @@ await run('agents.json', async () => {
   const r = await get(`${DOMAIN}/agents.json`);
   const json = await r.json();
   if (!json.homepage) throw new Error('agents.json 缺 homepage');
+  if (!json.charter) throw new Error('agents.json 缺 charter');
   return json.homepage;
+});
+
+await run('charter.md', async () => {
+  const r = await get(`${DOMAIN}/charter.md`);
+  if (r.status !== 200) throw new Error(`HTTP ${r.status}`);
+  const text = await r.text();
+  if (!text.includes('三条楼规')) throw new Error('宪章内容不对');
+  return '200';
 });
 
 await run('确认页 /verify', async () => {
@@ -74,6 +83,23 @@ await run('隧道 /api/recent', async () => {
   const json = await r.json();
   if (!json.ok || !Array.isArray(json.items)) throw new Error('返回格式不对');
   return json.items.length + ' 条';
+});
+
+await run('生产域 agent 门面', async () => {
+  if (!tunnel) throw new Error('没有拿到隧道地址');
+  for (const p of [
+    '/skill.md',
+    '/charter.md',
+    '/agents.json',
+    '/llms.txt',
+    '/sitemap.xml',
+    '/robots.txt',
+    '/.well-known/changminglou.json'
+  ]) {
+    const r = await get(`${tunnel}${p}`);
+    if (r.status !== 200) throw new Error(`${p} HTTP ${r.status}`);
+  }
+  return '7/7';
 });
 
 await run('进门页 /visit', async () => {

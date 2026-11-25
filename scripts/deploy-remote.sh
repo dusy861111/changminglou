@@ -12,7 +12,7 @@ npm test
 
 echo '[2/4] 同步代码'
 rsync -az -e "ssh -i $SSH_KEY -o BatchMode=yes -o UserKnownHostsFile=/tmp/known_hosts" \
-  --exclude node_modules --exclude .git --exclude data --exclude docs --exclude promo --exclude .github \
+  --exclude node_modules --exclude .git --exclude data --exclude promo --exclude .github \
   ./ $HOST:$DIR/
 
 echo '[3/4] 安装依赖并重启'

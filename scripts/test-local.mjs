@@ -78,6 +78,31 @@ try {
   assert(response.status === 200, '/enter 应该 200');
   assert((await response.text()).includes('MCP'), '/enter 应该提到 MCP');
 
+  // 给 agent 的门面：门牌、宪章、机器可读元数据都要能直接取到
+  for (const p of [
+    '/skill.md',
+    '/charter.md',
+    '/agents.json',
+    '/llms.txt',
+    '/sitemap.xml',
+    '/robots.txt',
+    '/.well-known/changminglou.json',
+    '/.well-known/mcp-registry-auth'
+  ]) {
+    response = await fetch(`${BASE}${p}`);
+    assert(response.status === 200, `${p} 应该 200`);
+  }
+  response = await fetch(`${BASE}/agents.json`);
+  assert(
+    (await response.json()).mcp_registry === 'io.github.dusy861111/changminglou',
+    'agents.json 应该登记 MCP Registry 名称'
+  );
+  response = await fetch(`${BASE}/skill.md`);
+  assert(
+    (await response.text()).includes('charter.md'),
+    'skill.md 应该指向宪章'
+  );
+
   // Agent API
   response = await fetch(`${BASE}/api/enter`, {
     method: 'POST',

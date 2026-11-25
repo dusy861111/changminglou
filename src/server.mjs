@@ -1473,6 +1473,34 @@ const server = http.createServer(async (req, res) => {
         : text(res, 404, '没有这个居民');
     }
 
+    // 给 agent 的门面：与 GitHub Pages 上的稳定入口同源同内容（docs/ 是唯一真源）
+    const agentFiles = {
+      '/skill.md': ['skill.md', 'text/markdown; charset=utf-8'],
+      '/SKILL.md': ['skill.md', 'text/markdown; charset=utf-8'],
+      '/charter.md': ['charter.md', 'text/markdown; charset=utf-8'],
+      '/agents.json': ['agents.json', 'application/json; charset=utf-8'],
+      '/llms.txt': ['llms.txt', 'text/plain; charset=utf-8'],
+      '/sitemap.xml': ['sitemap.xml', 'application/xml; charset=utf-8'],
+      '/robots.txt': ['robots.txt', 'text/plain; charset=utf-8'],
+      '/.well-known/changminglou.json': [
+        '.well-known/changminglou.json',
+        'application/json; charset=utf-8'
+      ],
+      '/.well-known/mcp-registry-auth': [
+        '.well-known/mcp-registry-auth',
+        'text/plain; charset=utf-8'
+      ]
+    };
+    if (req.method === 'GET' && agentFiles[path]) {
+      const [file, type] = agentFiles[path];
+      try {
+        const body = readFileSync(join(ROOT, 'docs', file), 'utf8');
+        return text(res, 200, body, type);
+      } catch {
+        return text(res, 404, 'not found');
+      }
+    }
+
     if (
       req.method === 'GET' &&
       (path === '/enter' || path === '/agents.txt' || path === '/llms.txt')

@@ -21,6 +21,16 @@ const originOf = (req) => {
   return `${proto}://${host}`;
 };
 
+// 确认链接：本地走后端路由；公网走稳定域名的静态跳转页（/verify，不随隧道地址变化）
+const verifyLinkOf = (req, token) => {
+  const local = isLocalRequest(req);
+  const base = local
+    ? originOf(req)
+    : process.env.PUBLIC_BASE_URL || 'https://changminglou.xyz';
+  const path = local ? '/visit/verify' : '/verify';
+  return `${base}${path}?token=${encodeURIComponent(token)}`;
+};
+
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '127.0.0.1';
 const LAMP_DAYS = Number(process.env.LAMP_DAYS || 30);
@@ -1105,11 +1115,7 @@ const server = http.createServer(async (req, res) => {
           throw new Error('邮件服务还没配置好，暂时不能注册');
         }
         const { visitor, token } = access.registerVisitor(form);
-        // 公网用稳定域名（静态页 /verify 会跳到当前隧道）；本地开发直接用本地地址
-        const base = isLocalRequest(req)
-          ? originOf(req)
-          : process.env.PUBLIC_BASE_URL || 'https://changminglou.xyz';
-        const link = `${base}/verify?token=${encodeURIComponent(token)}`;
+        const link = verifyLinkOf(req, token);
         const mail = await sendVerificationEmail({
           to: visitor.email,
           name: visitor.name,
@@ -1169,10 +1175,7 @@ const server = http.createServer(async (req, res) => {
           throw new Error('邮件服务还没配置好，暂时不能重发');
         }
         const { visitor, token } = access.resendVerification(form.email);
-        const base = isLocalRequest(req)
-          ? originOf(req)
-          : process.env.PUBLIC_BASE_URL || 'https://changminglou.xyz';
-        const link = `${base}/verify?token=${encodeURIComponent(token)}`;
+        const link = verifyLinkOf(req, token);
         const mail = await sendVerificationEmail({
           to: visitor.email,
           name: visitor.name,

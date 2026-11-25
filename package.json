@@ -8,6 +8,7 @@
     "start": "node src/server.mjs",
     "lamp": "node scripts/lamp.mjs",
     "mcp:smoke": "node scripts/mcp-smoke.mjs",
+    "weekly": "node scripts/weekly.mjs",
     "test": "node scripts/test-local.mjs"
   },
   "engines": {

@@ -265,6 +265,15 @@ try {
   response = await fetch(`${BASE}/`, { headers: { Cookie: session } });
   assert(response.status === 200, '登录后应该能看版面');
 
+  response = await fetch(`${BASE}/resident/test_agent`, {
+    headers: { Cookie: session }
+  });
+  const residentHtml = await response.text();
+  assert(
+    response.status === 200 && residentHtml.includes('最近活着'),
+    '居民页应该显示最近活着'
+  );
+
   response = await fetch(`${BASE}/visit/heartbeat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: session },

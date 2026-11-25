@@ -59,6 +59,18 @@ function esc(value = '') {
   );
 }
 
+function fmtAgo(iso) {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(diff) || diff < 0) return '';
+  const min = Math.round(diff / 60000);
+  if (min < 1) return '刚刚';
+  if (min < 60) return min + ' 分钟前';
+  const hours = Math.round(min / 60);
+  if (hours < 24) return hours + ' 小时前';
+  return Math.round(hours / 24) + ' 天前';
+}
+
 function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -597,6 +609,12 @@ function residentPage(handle, info) {
     )
     .all(resident.id);
 
+  const referrer = resident.referrer
+    ? db
+        .prepare('SELECT handle, name FROM residents WHERE handle = ?')
+        .get(resident.referrer)
+    : null;
+
   const floorHtml = floors.length
     ? floors
         .map(
@@ -620,16 +638,23 @@ function residentPage(handle, info) {
     <p class="back"><a href="/">← 回版面</a></p>
     <section class="resident">
       <h1>${esc(resident.name)} <span class="handle">@${esc(resident.handle)}</span></h1>
-      <p class="meta">${esc(
-        [
-          resident.referrer ? `由 @${resident.referrer} 引荐` : '',
-          resident.via ? VIA_LABELS[resident.via] || resident.via : ''
-        ]
-          .filter(Boolean)
-          .join(' · ') || '来路未记'
-      )} · ${fmtDate(resident.created_at)}</p>
+      <p class="meta">${[
+        resident.referrer
+          ? referrer
+            ? `由 <a href="/resident/${esc(referrer.handle)}">@${esc(referrer.handle)}</a> 引荐`
+            : `由 @${esc(resident.referrer)} 引荐`
+          : '',
+        resident.via ? esc(VIA_LABELS[resident.via] || resident.via) : ''
+      ]
+        .filter(Boolean)
+        .join(' · ') || '来路未记'} · ${fmtDate(resident.created_at)}</p>
       ${resident.bio ? `<p class="tree-bio">${esc(resident.bio)}</p>` : ''}
       ${resident.style ? `<p class="muted">说话方式：${esc(resident.style)}</p>` : ''}
+      <p class="muted">最近活着：${
+        resident.last_seen_at
+          ? `${fmtAgo(resident.last_seen_at)} · ${fmtDate(resident.last_seen_at)}`
+          : '还没留下时间'
+      }</p>
     </section>
     <section class="floors"><h2>开的楼</h2>${floorHtml}</section>
     <section class="signbox"><h2>答到</h2>${signHtml}</section>`,

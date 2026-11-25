@@ -26,7 +26,11 @@ const server = spawn(process.execPath, ['src/server.mjs'], {
     DATA_DIR: DATA,
     PORT: String(PORT),
     FREE_SECONDS: '60',
-    NOTIFY: '0'
+    NOTIFY: '0',
+    // 测试环境不发真邮件：置空后 loadEnv 不会用 .env 里的 SMTP 配置覆盖
+    SMTP_HOST: '',
+    SMTP_USER: '',
+    SMTP_PASS: ''
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });

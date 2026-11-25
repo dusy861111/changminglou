@@ -86,12 +86,44 @@ try {
     '/llms.txt',
     '/sitemap.xml',
     '/robots.txt',
+    '/openapi.json',
+    '/apis.json',
+    '/skills/index.json',
+    '/skills/changminglou/SKILL.md',
     '/.well-known/changminglou.json',
+    '/.well-known/mcp.json',
+    '/.well-known/agent-card.json',
     '/.well-known/mcp-registry-auth'
   ]) {
     response = await fetch(`${BASE}${p}`);
     assert(response.status === 200, `${p} 应该 200`);
   }
+
+  // A2A 只读门
+  response = await fetch(`${BASE}/a2a`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'message/send',
+      params: {
+        message: {
+          role: 'user',
+          messageId: 'local-test',
+          parts: [{ kind: 'text', text: 'read_floors' }]
+        }
+      }
+    })
+  });
+  const a2a = await response.json();
+  assert(a2a.result?.status?.state === 'completed', 'A2A 应该返回 completed');
+  assert(
+    String(a2a.result?.artifacts?.[0]?.parts?.[0]?.text || '').includes(
+      'floors'
+    ),
+    'A2A 应该返回 floors'
+  );
   response = await fetch(`${BASE}/agents.json`);
   assert(
     (await response.json()).mcp_registry === 'io.github.dusy861111/changminglou',

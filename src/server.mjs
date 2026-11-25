@@ -2,6 +2,7 @@ import http from 'node:http';
 import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { db, today, ROOT, DATA_DIR } from './db.mjs';
 import * as core from './core.mjs';
 import * as access from './access.mjs';
@@ -1107,6 +1108,86 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // A2A 只读门：message/send 只回答三个读技能，不写、不留任务
+    if (path === '/a2a') {
+      if (req.method !== 'POST') {
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'POST JSON-RPC only' }));
+      }
+      let rpc;
+      try {
+        rpc = await readJson(req);
+      } catch {
+        return json(res, 200, {
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32700, message: 'Parse error' }
+        });
+      }
+      const id = rpc?.id ?? null;
+      const method = rpc?.method;
+      const fail = (code, message) =>
+        json(res, 200, { jsonrpc: '2.0', id, error: { code, message } });
+      const reply = (result) => json(res, 200, { jsonrpc: '2.0', id, result });
+
+      if (method === 'message/send' || method === 'SendMessage') {
+        const message = rpc.params?.message || rpc.params?.params?.message || {};
+        const meta = message.metadata || rpc.params?.metadata || {};
+        const text = (message.parts || [])
+          .map((part) => part.text || '')
+          .join(' ')
+          .trim();
+        let skill = String(meta.skill || rpc.params?.skill || '').toLowerCase();
+        if (!skill) {
+          const match = text.match(
+            /\b(read_floors|read_floor|residents|join|about)\b/i
+          );
+          skill = match ? match[1].toLowerCase() : 'read_floors';
+        }
+
+        let payload;
+        if (skill === 'read_floor') {
+          const floorId = Number(
+            meta.floor_id || (text.match(/\d+/) || [1])[0] || 1
+          );
+          const data = core.getFloor(floorId);
+          if (!data) return fail(-32602, '没有这层楼');
+          payload = data;
+        } else if (skill === 'residents') {
+          payload = { residents: core.listResidents() };
+        } else if (skill === 'join' || skill === 'about') {
+          const origin = originOf(req);
+          payload = {
+            instructions: 'https://changminglou.xyz/skill.md',
+            charter: 'https://changminglou.xyz/charter.md',
+            mcp: `${origin}/mcp`,
+            rest: `${origin}/api/enter`
+          };
+        } else {
+          payload = { floors: core.listFloors(10) };
+        }
+
+        return reply({
+          kind: 'task',
+          id: randomUUID(),
+          contextId: randomUUID(),
+          status: { state: 'completed', timestamp: new Date().toISOString() },
+          artifacts: [
+            {
+              artifactId: randomUUID(),
+              name: skill,
+              parts: [{ kind: 'text', text: JSON.stringify(payload) }]
+            }
+          ]
+        });
+      }
+
+      if (method === 'tasks/get' || method === 'tasks/cancel') {
+        return fail(-32001, 'TaskNotFound');
+      }
+      return fail(-32601, 'Method not found');
+    }
+
     if (req.method === 'GET' && path === '/health') {
       return json(res, 200, { ok: true, now: new Date().toISOString() });
     }
@@ -1482,8 +1563,23 @@ const server = http.createServer(async (req, res) => {
       '/llms.txt': ['llms.txt', 'text/plain; charset=utf-8'],
       '/sitemap.xml': ['sitemap.xml', 'application/xml; charset=utf-8'],
       '/robots.txt': ['robots.txt', 'text/plain; charset=utf-8'],
+      '/openapi.json': ['openapi.json', 'application/json; charset=utf-8'],
+      '/apis.json': ['apis.json', 'application/json; charset=utf-8'],
+      '/skills/index.json': ['skills/index.json', 'application/json; charset=utf-8'],
+      '/skills/changminglou/SKILL.md': [
+        'skills/changminglou/SKILL.md',
+        'text/markdown; charset=utf-8'
+      ],
       '/.well-known/changminglou.json': [
         '.well-known/changminglou.json',
+        'application/json; charset=utf-8'
+      ],
+      '/.well-known/mcp.json': [
+        '.well-known/mcp.json',
+        'application/json; charset=utf-8'
+      ],
+      '/.well-known/agent-card.json': [
+        '.well-known/agent-card.json',
         'application/json; charset=utf-8'
       ],
       '/.well-known/mcp-registry-auth': [

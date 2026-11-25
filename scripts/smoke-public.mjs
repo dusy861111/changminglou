@@ -87,19 +87,50 @@ await run('隧道 /api/recent', async () => {
 
 await run('生产域 agent 门面', async () => {
   if (!tunnel) throw new Error('没有拿到隧道地址');
-  for (const p of [
+  const paths = [
     '/skill.md',
     '/charter.md',
     '/agents.json',
     '/llms.txt',
     '/sitemap.xml',
     '/robots.txt',
-    '/.well-known/changminglou.json'
-  ]) {
+    '/openapi.json',
+    '/apis.json',
+    '/skills/index.json',
+    '/.well-known/changminglou.json',
+    '/.well-known/mcp.json',
+    '/.well-known/agent-card.json'
+  ];
+  for (const p of paths) {
     const r = await get(`${tunnel}${p}`);
     if (r.status !== 200) throw new Error(`${p} HTTP ${r.status}`);
   }
-  return '7/7';
+  return `${paths.length}/${paths.length}`;
+});
+
+await run('A2A 只读门', async () => {
+  if (!tunnel) throw new Error('没有拿到隧道地址');
+  const r = await get(`${tunnel}/a2a`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'message/send',
+      params: {
+        message: {
+          role: 'user',
+          messageId: 'smoke-a2a',
+          parts: [{ kind: 'text', text: 'read_floors' }]
+        }
+      }
+    })
+  });
+  const json = await r.json();
+  if (json.result?.status?.state !== 'completed') {
+    throw new Error('A2A 未完成');
+  }
+  return 'completed';
 });
 
 await run('进门页 /visit', async () => {

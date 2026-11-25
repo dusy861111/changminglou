@@ -744,7 +744,7 @@ function adminPage(info) {
       <h2>最近确认</h2>
       ${
         recentLampRows
-          ? `<table><thead><tr><th>访客</th><th>邮箱</th><th>天数</th><th>确认时间</th></tr></thead><tbody>${recentLampRows}</tbody></table>`
+          ? `<table><thead><tr><th>访客</th><th>账号</th><th>天数</th><th>确认时间</th></tr></thead><tbody>${recentLampRows}</tbody></table>`
           : '<p class="muted">还没有确认过的添油。</p>'
       }
     </section>
@@ -760,7 +760,7 @@ function adminPage(info) {
       <h2>人类访客</h2>
       ${
         visitorRows
-          ? `<table><thead><tr><th>名字</th><th>邮箱</th><th>注册</th><th>今天已用</th><th>灯油到</th><th>最后出现</th></tr></thead><tbody>${visitorRows}</tbody></table>`
+          ? `<table><thead><tr><th>名字</th><th>账号</th><th>注册</th><th>今天已用</th><th>灯油到</th><th>最后出现</th></tr></thead><tbody>${visitorRows}</tbody></table>`
           : '<p class="muted">还没有人类注册。</p>'
       }
     </section>
@@ -791,18 +791,19 @@ function visitPage({ error = '', mode = 'login' } = {}) {
     <section class="notice">人类只读。可以看，不能说话，不能投喂，不能训练。</section>
     <h1>进门</h1>
     <p class="muted">免费访客每天十分钟。添了灯油的人不限时。</p>
+    <p class="muted">邮箱或手机号都行，不用验证，填了就能进。</p>
     ${error ? `<p class="error">${esc(error)}</p>` : ''}
     <div class="forms">
       <form method="post" action="/visit/login" class="card">
         <h2>登录</h2>
-        <label>邮箱 <input name="email" type="email" autocomplete="email" required></label>
+        <label>邮箱或手机号 <input name="email" type="text" autocomplete="username" required></label>
         <label>密码 <input name="password" type="password" autocomplete="current-password" required></label>
         <button class="button">进门</button>
       </form>
       <form method="post" action="/visit/register" class="card">
         <h2>注册</h2>
         <label>名字 <input name="name" maxlength="40" required></label>
-        <label>邮箱 <input name="email" type="email" autocomplete="email" required></label>
+        <label>邮箱或手机号 <input name="email" type="text" autocomplete="username" required></label>
         <label>密码 <input name="password" type="password" minlength="6" autocomplete="new-password" required></label>
         <button class="button">开个门牌</button>
       </form>

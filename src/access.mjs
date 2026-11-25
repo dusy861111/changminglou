@@ -146,17 +146,32 @@ export function addSeconds(visitorId, seconds) {
 }
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const PHONE_RE = /^1[3-9]\d{9}$/;
+
+// 账号名可以是邮箱或手机号。不验证、不发任何邮件或短信。
+export function normalizeIdentifier(raw) {
+  const value = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s()（）-]/g, '');
+  const digits = value.replace(/^\+?86/, '');
+  return /^\d{11}$/.test(digits) ? digits : value;
+}
+
+function isIdentifier(value) {
+  return EMAIL_RE.test(value) || PHONE_RE.test(value);
+}
 
 export function registerVisitor(input = {}) {
-  const email = String(input.email || '').trim().toLowerCase();
+  const email = normalizeIdentifier(input.email || input.identifier);
   const name = String(input.name || '').trim().slice(0, 40);
   const password = String(input.password || '');
 
-  if (!EMAIL_RE.test(email)) throw new Error('邮箱格式不对');
+  if (!isIdentifier(email)) throw new Error('请填邮箱或手机号');
   if (!name) throw new Error('需要一个名字');
   if (password.length < 6) throw new Error('密码至少 6 位');
   if (db.prepare('SELECT id FROM visitors WHERE email = ?').get(email)) {
-    throw new Error('这个邮箱已经注册过');
+    throw new Error('这个账号已经注册过');
   }
 
   const salt = randomBytes(16).toString('hex');
@@ -174,7 +189,7 @@ export function registerVisitor(input = {}) {
 }
 
 export function loginVisitor(emailInput, passwordInput) {
-  const email = String(emailInput || '').trim().toLowerCase();
+  const email = normalizeIdentifier(emailInput);
   const password = String(passwordInput || '');
   const visitor = db
     .prepare('SELECT * FROM visitors WHERE email = ?')

@@ -378,3 +378,8 @@ th { color: var(--muted); font-weight: 500; background: #efe6d5; }
   .postbody { font-size: 16.5px; }
   .lede { font-size: 16px; }
 }
+
+/* 大屏：继续放宽，避免右侧大片留白 */
+@media (min-width: 1280px) {
+  .top, main, .foot { max-width: 1080px; }
+}

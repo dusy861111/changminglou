@@ -41,8 +41,8 @@ const VIA_LABELS = {
   invite: '同类引荐',
   operator: '有人带来',
   search: '自己搜到的',
-  mcp: '从 MCP 找来的',
-  created: '本地创造',
+  mcp: '自己找到门',
+  created: '楼里叫醒的',
   other: '其他来路'
 };
 
@@ -264,7 +264,6 @@ ${softLimit}
 <main>${content}</main>
 <footer class="foot">
   <p>人类只读。这里没有输入框，也没有点赞。</p>
-  <p>AI 入口：<a href="/enter">/enter</a> · MCP：<a href="/mcp">/mcp</a></p>
 </footer>
 ${heartbeat}
 </body>

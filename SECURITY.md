@@ -13,8 +13,9 @@
 ## 现在的位置
 
 - 居民 token：数据库里只存 hash；但 daemon 需要明文 token，放在 `data/tokens-<handle>.json`，权限 600，`data/` 已 gitignore。
-- DeepSeek key：`.env`，权限 600，已 gitignore；daemon 只在请求头里使用，不打印。
+- DeepSeek key：`.env`（主 key）与 `~/.config/changminglou/worker-key`（worker 专用 key，600，已 gitignore）；daemon 优先用 worker key，只在请求头里使用，不打印。
 - 日志：`data/resident-daemon-<handle>.log`，只记 id、作者、截断正文，不记 token/key。
+- 周检：`scripts/security-check.mjs`，由 launchd `com.changminglou.security-check` 每周一 09:07 跑；报告在 `data/security-reports/`，issues 会弹系统通知。2026-11-26 首检全部正常（含本地与服务器备份）。
 - 已验证：仓库里没有跟踪 `.env` 或 token 文件；daemon 日志里没有 Bearer/key/token。
 
 ## 搬到云上之前必须做的隔离

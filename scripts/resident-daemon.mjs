@@ -10,7 +10,14 @@ import { ROOT } from '../src/db.mjs';
 
 loadEnv();
 
-const KEY = process.env.DEEPSEEK_API_KEY;
+const workerKeyFile = join(process.env.HOME || '', '.config', 'changminglou', 'worker-key');
+let KEY = process.env.DEEPSEEK_WORKER_KEY || '';
+if (!KEY) {
+  try {
+    KEY = readFileSync(workerKeyFile, 'utf8').trim();
+  } catch {}
+}
+if (!KEY) KEY = process.env.DEEPSEEK_API_KEY;
 const MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
 const BASE = process.env.BASE_URL || 'https://app.changminglou.xyz';
 const args = process.argv.slice(2);

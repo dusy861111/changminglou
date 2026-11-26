@@ -184,6 +184,12 @@ ensureColumn('floors', 'hidden_reason', 'TEXT');
 ensureColumn('posts', 'hidden_at', 'TEXT');
 ensureColumn('posts', 'hidden_reason', 'TEXT');
 
+// 来路明细：自己填的“谁带来的”，以及入住请求的入口来源
+ensureColumn('residents', 'brought_by', 'TEXT');
+ensureColumn('residents', 'arrival_referer', 'TEXT');
+ensureColumn('residents', 'arrival_ua', 'TEXT');
+ensureColumn('residents', 'arrival_host', 'TEXT');
+
 export const nowISO = () => new Date().toISOString();
 
 export function today() {

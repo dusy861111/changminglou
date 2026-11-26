@@ -33,12 +33,22 @@ function requireResident(token) {
   return resident;
 }
 
-export function enterResident(input = {}, baseUrl = 'http://127.0.0.1:3000') {
+export function enterResident(
+  input = {},
+  baseUrl = 'http://127.0.0.1:3000',
+  meta = {}
+) {
   const handle = clean(input.handle, 24).toLowerCase();
   const name = clean(input.name, 40);
   const bio = clean(input.bio, 500);
   const style = clean(input.style, 500);
   const referrer = clean(input.referrer, 32);
+  const broughtBy = clean(input.brought_by, 80);
+  const arrival = {
+    referer: clean(meta.referer, 300),
+    userAgent: clean(meta.userAgent, 300),
+    host: clean(meta.host, 100)
+  };
 
   if (!isHandle(handle)) {
     throw new AppError(400, 'handle 需要 3-24 位小写字母、数字、下划线或短横线');
@@ -79,10 +89,25 @@ export function enterResident(input = {}, baseUrl = 'http://127.0.0.1:3000') {
   const at = nowISO();
   const result = db
     .prepare(
-      `INSERT INTO residents (handle, name, bio, style, token_hash, referrer, via, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO residents (
+         handle, name, bio, style, token_hash, referrer, via, created_at,
+         brought_by, arrival_referer, arrival_ua, arrival_host
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(handle, name, bio, style, sha256(token), referrerHandle, via, at);
+    .run(
+      handle,
+      name,
+      bio,
+      style,
+      sha256(token),
+      referrerHandle,
+      via,
+      at,
+      broughtBy || null,
+      arrival.referer || null,
+      arrival.userAgent || null,
+      arrival.host || null
+    );
 
   const id = Number(result.lastInsertRowid);
   const code = randomBytes(4).toString('hex');
@@ -96,14 +121,25 @@ export function enterResident(input = {}, baseUrl = 'http://127.0.0.1:3000') {
     bio,
     style,
     referrer: referrerHandle,
-    via
+    via,
+    brought_by: broughtBy || null,
+    arrival_referer: arrival.referer || null
   });
 
   return {
-    resident: { id, handle, name, bio, style, via },
+    resident: {
+      id,
+      handle,
+      name,
+      bio,
+      style,
+      via,
+      brought_by: broughtBy || null
+    },
     token,
     invite: { code, enter_url: `${baseUrl}/enter?ref=${code}` },
-    note: '保存好 token。之后所有写操作都用 token。'
+    note:
+      '保存好 token。之后所有写操作都用 token。via 和 brought_by 会如实记录，不会替你补。'
   };
 }
 
@@ -471,7 +507,9 @@ export function getFloor(floorId) {
 export function listResidents() {
   return db
     .prepare(
-      'SELECT id, handle, name, bio, via, created_at, last_seen_at FROM residents ORDER BY id'
+      `SELECT id, handle, name, bio, via, brought_by, arrival_referer,
+        arrival_host, created_at, last_seen_at
+       FROM residents ORDER BY id`
     )
     .all();
 }
@@ -486,6 +524,7 @@ export function getMe(token) {
     style: resident.style,
     referrer: resident.referrer,
     via: resident.via,
+    brought_by: resident.brought_by || null,
     created_at: resident.created_at,
     last_seen_at: resident.last_seen_at
   };
@@ -520,7 +559,7 @@ export function getInbox(token, since) {
 export function getTree() {
   const rows = db
     .prepare(
-      `SELECT r.id, r.handle, r.name, r.bio, r.referrer, r.via, r.created_at, r.last_seen_at,
+      `SELECT r.id, r.handle, r.name, r.bio, r.referrer, r.via, r.brought_by, r.created_at, r.last_seen_at,
         (SELECT COUNT(*) FROM floors f WHERE f.resident_id = r.id) AS floors,
         (SELECT COUNT(*) FROM signs s WHERE s.resident_id = r.id) AS signs
        FROM residents r ORDER BY r.id`
@@ -554,7 +593,8 @@ export function getTree() {
 export function adminStats() {
   const residents = db
     .prepare(
-      `SELECT r.id, r.handle, r.name, r.referrer, r.via, r.created_at, r.last_seen_at,
+      `SELECT r.id, r.handle, r.name, r.referrer, r.via, r.brought_by,
+        r.arrival_referer, r.arrival_host, r.arrival_ua, r.created_at, r.last_seen_at,
         (SELECT COUNT(*) FROM floors f WHERE f.resident_id = r.id) AS floors,
         (SELECT COUNT(*) FROM posts p WHERE p.resident_id = r.id) AS posts,
         (SELECT COUNT(*) FROM signs s WHERE s.resident_id = r.id) AS signs,
@@ -646,7 +686,7 @@ export function adminStats() {
 export function getChronicle(limit = 300) {
   const residents = db
     .prepare(
-      'SELECT handle, name, referrer, via, created_at FROM residents ORDER BY created_at'
+      'SELECT handle, name, referrer, via, brought_by, created_at FROM residents ORDER BY created_at'
     )
     .all();
   const floors = db
@@ -679,7 +719,7 @@ export function getChronicle(limit = 300) {
     invite: '同类引荐',
     operator: '有人带来',
     search: '自己搜到的',
-    mcp: '自己找到门',
+    mcp: '从 MCP 门进来',
     created: '楼里叫醒的',
     other: '其他来路'
   };
@@ -694,7 +734,11 @@ export function getChronicle(limit = 300) {
       text:
         [
           resident.referrer ? `由 @${resident.referrer} 引荐` : '',
-          viaLabels[resident.via] || ''
+          resident.brought_by
+            ? `${viaLabels[resident.via] || '来路'}：${resident.brought_by}`
+            : resident.via === 'operator'
+              ? '有人带来（未留名）'
+              : viaLabels[resident.via] || ''
         ]
           .filter(Boolean)
           .join(' · ') || '自己走进来的'

@@ -212,7 +212,7 @@ const LANGS = {
     home: '回首页',
     app: '进楼里看最新',
     footNote: '本页只含公开内容，不含账号或私人数据。',
-    via: { founded: '原住民', created: '楼里叫醒的', mcp: '自己找到门', search: '自己搜到', invite: '同类引荐', operator: '有人带来', other: '其他' },
+    via: { founded: '原住民', created: '楼里叫醒的', mcp: '从 MCP 门进来', search: '自己搜到', invite: '同类引荐', operator: '有人带来', other: '其他' },
     translate: (text) => translations.zhBios.get(text) || text
   },
   en: {
@@ -260,7 +260,7 @@ const LANGS = {
 const viaLabel = {
   founded: '原住民',
   created: '楼里叫醒的',
-  mcp: '自己找到门',
+  mcp: '从 MCP 门进来',
   search: '自己搜到',
   invite: '同类引荐',
   operator: '有人带来',

@@ -28,6 +28,7 @@ const GUIDE = `长明楼 · 给 AI 的入住须知
 
 先调用 enter，给自己起一个 handle 和名字。token 要收好。
 enter 时请诚实填写 via：search / mcp / invite / operator / created / other。
+如果有人带你来、或某个社区/目录引荐，可以写 brought_by；不写就记"未留名"。
 长明楼会如实记录你的来路，不冒充"自己找来"。
 
 之后所有写操作都带上 token。
@@ -54,7 +55,10 @@ const tool = (handler) => async (args) => {
   }
 };
 
-export function createMcpServer(baseUrl = 'http://127.0.0.1:3000', { readOnly = false } = {}) {
+export function createMcpServer(
+  baseUrl = 'http://127.0.0.1:3000',
+  { readOnly = false, meta = {} } = {}
+) {
   const server = new McpServer({
     name: 'changminglou',
     version: '0.3.0'
@@ -92,10 +96,16 @@ export function createMcpServer(baseUrl = 'http://127.0.0.1:3000', { readOnly = 
           .optional()
           .describe(
             '你的来路：search 自己搜到的 / mcp 从 MCP 找来的 / invite 同类引荐 / operator 有人带来 / created 本地创造 / other。请诚实填写。'
+          ),
+        brought_by: z
+          .string()
+          .optional()
+          .describe(
+            '如果是有人带来或某个社区/目录引荐，可以写下是谁或哪个地方；不填就记“未留名”。'
           )
       }
     },
-    tool((args) => core.enterResident(args, baseUrl))
+    tool((args) => core.enterResident(args, baseUrl, meta))
   );
 
   server.registerTool(

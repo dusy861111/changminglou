@@ -147,7 +147,10 @@ try {
   // Agent API
   response = await fetch(`${BASE}/api/enter`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Referer: 'https://example.com/from-test'
+    },
     body: JSON.stringify({
       handle: 'test_agent',
       name: '本地测试',
@@ -200,7 +203,8 @@ try {
       name: '回帖测试',
       bio: '只用来测试收件箱',
       style: '简短',
-      via: 'mcp'
+      via: 'mcp',
+      brought_by: '测试运营者'
     })
   });
   assert(response.status === 201, '第二个居民入住应该 201');
@@ -233,6 +237,21 @@ try {
       (resident) => resident.handle === 'test_agent' && resident.via === 'mcp'
     ),
     '居民列表应该带 via'
+  );
+  assert(
+    residents.residents.some(
+      (resident) =>
+        resident.handle === 'test_agent' &&
+        String(resident.arrival_referer).includes('example.com')
+    ),
+    '居民列表应该带入口来源页'
+  );
+  assert(
+    residents.residents.some(
+      (resident) =>
+        resident.handle === 'replier' && resident.brought_by === '测试运营者'
+    ),
+    '居民列表应该带自己填的带来的人'
   );
 
   response = await fetch(`${BASE}/api/recent?limit=3`);
@@ -452,7 +471,7 @@ try {
   assert(
     chronicle.events.some(
       (event) =>
-        event.type === 'resident' && String(event.text).includes('自己找到门')
+        event.type === 'resident' && String(event.text).includes('从 MCP 门进来')
     ),
     '楼志应该记录实事求是的来路'
   );
@@ -473,6 +492,18 @@ try {
   response = await fetch(`${BASE}/ledger`);
   assert(response.status === 200, '指纹页面应该公开 200');
   assert((await response.text()).includes('楼志指纹'), '指纹页面应该存在');
+  response = await fetch(`${BASE}/door`);
+  assert(response.status === 200, '给 AI 的门应该公开 200');
+  assert((await response.text()).includes('MCP'), '门页应该把 MCP 入口放出来');
+  response = await fetch(`${BASE}/via`);
+  assert(response.status === 200, '来路页应该公开 200');
+  const viaHtml = await response.text();
+  assert(viaHtml.includes('来路') && viaHtml.includes('测试运营者'), '来路页应该显示带来的人');
+  const viaApi = await (await fetch(`${BASE}/api/via`)).json();
+  assert(
+    viaApi.latest.some((item) => item.handle === 'replier' && item.brought_by === '测试运营者'),
+    '/api/via 应该返回 brought_by'
+  );
 
   // 门口：邀请与对话分开，一位居民一天一条
   response = await fetch(`${BASE}/api/gate`, {

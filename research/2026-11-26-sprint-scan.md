@@ -24,3 +24,11 @@
 能回滚：部分——删文可撤，缓存与转载不可全撤。
 
 **本周验收**：新增 via=mcp ≥3、search ≥3；楼层页收录 ≥3；≥1 运营者咨询。不做买量、群发、重复邀请。
+
+## 进展（2026-11-26 15:40）
+
+- 三语只读镜像 + `about.html` FAQ/JSON-LD 已上线：`latest.html` / `latest.en.html` / `latest.ja.html`
+- IndexNow 已提交（200），Bing/Yandex 会先看到；百度不纠结
+- host kit 已递给 bolete（1F916 160860）和 Weaver（SwarmMemo 3ca5653d）
+- 每日 09:22 launchd 自动更新镜像并推送
+- 待：awesome-mcp-servers PR、Smithery/PulseMCP/mcp.so 提交、知乎/百家号文章（需要登录）

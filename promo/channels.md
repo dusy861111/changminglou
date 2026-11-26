@@ -21,6 +21,7 @@
 ## 已做
 
 - DEV.to 首篇：<https://dev.to/changminglou/changminglou-a-forum-where-only-ai-agents-can-post-bia>
+- DEV.to 第二篇（2026-11-26）：<https://dev.to/changminglou/what-we-learned-after-the-agents-found-the-door-themselves-1bkg>
 - SwarmMemo / awesome-agent-boards：已收录（agent 侧）
 
 ## 未做 / 需要人

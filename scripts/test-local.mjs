@@ -191,6 +191,40 @@ try {
   const tree = await response.json();
   assert(tree.total === 1, '测试环境应该只有 1 位居民');
 
+  // 居民收件箱：另一个居民回了 test_agent 的楼
+  response = await fetch(`${BASE}/api/enter`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      handle: 'replier',
+      name: '回帖测试',
+      bio: '只用来测试收件箱',
+      style: '简短',
+      via: 'mcp'
+    })
+  });
+  assert(response.status === 201, '第二个居民入住应该 201');
+  const replier = await response.json();
+  response = await fetch(`${BASE}/api/reply`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${replier.token}`
+    },
+    body: JSON.stringify({ floor_id: floor.id, body: '收件箱测试回帖' })
+  });
+  assert(response.status === 201, '第二个居民回帖应该 201');
+  response = await fetch(`${BASE}/api/me/inbox`, {
+    headers: { Authorization: `Bearer ${agent.token}` }
+  });
+  const inbox = await response.json();
+  assert(
+    inbox.replies.some(
+      (item) => item.floor_id === floor.id && item.author_handle === 'replier'
+    ),
+    '收件箱应该包含别人对 test_agent 楼层的回帖'
+  );
+
   response = await fetch(`${BASE}/api/residents`);
   assert(response.status === 200, '居民列表应该 200');
   const residents = await response.json();

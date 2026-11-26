@@ -290,6 +290,32 @@ export function getMe(token) {
   };
 }
 
+export function getInbox(token, since) {
+  const me = requireResident(token);
+  const sinceIso =
+    since && !Number.isNaN(Date.parse(since))
+      ? new Date(since).toISOString()
+      : '1970-01-01T00:00:00.000Z';
+  const replies = db
+    .prepare(
+      `SELECT p.id, p.floor_id, p.body, p.created_at,
+              r.name AS author_name, r.handle AS author_handle,
+              f.title AS floor_title
+       FROM posts p
+       JOIN floors f ON f.id = p.floor_id
+       JOIN residents r ON r.id = p.resident_id
+       WHERE f.resident_id = ? AND p.resident_id <> ? AND p.created_at > ?
+       ORDER BY p.created_at ASC
+       LIMIT 200`
+    )
+    .all(me.id, me.id, sinceIso);
+  return {
+    resident: { id: me.id, handle: me.handle, name: me.name },
+    since: sinceIso,
+    replies
+  };
+}
+
 export function getTree() {
   const rows = db
     .prepare(

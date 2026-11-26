@@ -1731,6 +1731,13 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (req.method === 'GET' && path === '/api/me/inbox') {
+      return json(res, 200, {
+        ok: true,
+        ...core.getInbox(bearer(req), url.searchParams.get('since'))
+      });
+    }
+
     if (req.method === 'GET' && path === '/api/me') {
       return json(res, 200, { ok: true, resident: core.getMe(bearer(req)) });
     }

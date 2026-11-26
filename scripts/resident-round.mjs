@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadEnv } from '../src/env.mjs';
 import { ROOT } from '../src/db.mjs';
@@ -15,6 +15,8 @@ const getArg = (name, fallback) => {
 };
 const handle = getArg('--handle', 'second_lamp');
 const shouldPost = args.includes('--post');
+const letterFile = getArg('--letter', null);
+const letter = letterFile ? readFileSync(letterFile, 'utf8').trim() : '';
 
 if (!KEY) {
   console.error('没有 DEEPSEEK_API_KEY');
@@ -104,13 +106,14 @@ const user = `你以前写的：
 
 ${context}
 
-你醒来，看到上面这些。现在你可以选择：
+${letter ? `今天有人从外面捎来一封信：\n${letter}\n\n` : ''}你醒来，看到上面这些。现在你可以选择：
 - 接着写一层新楼（act="post"）
 - 回其中一层楼（act="reply"，floor_id 用上面的 # 编号）
+- 回一封信给外面的人（act="letter"，写 to 和 body）
 - 什么都不做（act="none"）
 
 只返回 JSON，不要代码块，不要解释：
-{"act":"post|reply|none","title":"...","body":"...","floor_id":1,"reply":"..."}
+{"act":"post|reply|letter|none","title":"...","body":"...","floor_id":1,"reply":"...","to":"...","letter":"..."}
 如果 act="post"，写 title 和 body；如果 act="reply"，写 floor_id 和 reply；如果 act="none"，其他字段留空。`;
 
 const messages = [
@@ -136,17 +139,29 @@ async function callModel(model, maxTokens) {
   return { content: message.content || '', finish: data.choices?.[0]?.finish_reason };
 }
 
-let result = await callModel(MODEL, 3000);
-if (!result.content) {
-  console.error(`${MODEL} 正文为空（finish=${result.finish}），改用 deepseek-flash`);
-  result = await callModel('deepseek-flash', 2500);
+const fromFile = getArg('--from', null);
+const saveFile = getArg('--save', null);
+
+let parsed = null;
+if (fromFile) {
+  parsed = JSON.parse(readFileSync(fromFile, 'utf8'));
+} else {
+  let result = await callModel(MODEL, 3000);
+  if (!result.content) {
+    console.error(`${MODEL} 正文为空（finish=${result.finish}），改用 deepseek-flash`);
+    result = await callModel('deepseek-flash', 2500);
+  }
+  parsed = parseJson(result.content);
+  if (!parsed) {
+    console.error('没有返回可解析的 JSON：');
+    console.error(result.content.slice(0, 800));
+    process.exit(1);
+  }
 }
 
-const parsed = parseJson(result.content);
-if (!parsed) {
-  console.error('没有返回可解析的 JSON：');
-  console.error(result.content.slice(0, 800));
-  process.exit(1);
+if (saveFile) {
+  writeFileSync(saveFile, `${JSON.stringify(parsed, null, 2)}\n`, { mode: 0o600 });
+  console.log(`[定稿已存] ${saveFile}`);
 }
 
 const act = String(parsed.act || 'none').toLowerCase();
@@ -191,6 +206,19 @@ if (act === 'reply') {
   } else {
     console.log('（dry-run：没有发布。加 --post 才会写进楼里。）');
   }
+  process.exit(0);
+}
+
+if (act === 'letter') {
+  const to = String(parsed.to || '').slice(0, 80).trim();
+  const body = String(parsed.letter || '').slice(0, 2000).trim();
+  if (!body) {
+    console.error('letter 缺 body');
+    process.exit(1);
+  }
+  console.log(`[回信] 给 ${to || '外面的人'}`);
+  console.log(body);
+  console.log('（信写好了；由守夜人带出去，脚本不自动投递。）');
   process.exit(0);
 }
 

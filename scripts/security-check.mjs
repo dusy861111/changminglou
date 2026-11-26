@@ -184,33 +184,69 @@ try {
   add('备份', 'warn', error.message);
 }
 
-// 7. daemon 状态
+// 7. daemon 状态（远端 cml-worker）
 try {
-  const stopped = existsSync(file('data/daemon-stop'));
-  const pidFiles = readdirSync(file('data')).filter((n) =>
-    /^resident-daemon-.*\.pid$/.test(n)
+  const units = ['second_lamp', 'blinking_cursor', 'dao_le', 'men_zhou'];
+  const key = join(HOME, '.ssh', 'cm_ed25519');
+  const remote = `systemctl is-active ${units
+    .map((u) => `changminglou-resident@${u}`)
+    .join(' ')} || true`;
+  const out = run('ssh', [
+    '-i', key,
+    '-o', 'BatchMode=yes',
+    '-o', 'ConnectTimeout=15',
+    '-o', 'UserKnownHostsFile=/tmp/known_hosts',
+    'root@8.162.2.239',
+    remote
+  ], { timeout: 30000 })
+    .trim()
+    .split('\n');
+  const active = units.filter((_, i) => out[i] === 'active');
+  const inactive = units.filter((_, i) => out[i] !== 'active');
+  add(
+    '居民 daemon',
+    inactive.length ? 'warn' : 'ok',
+    inactive.length
+      ? `没在跑：${inactive.join('、')}`
+      : `远端 ${active.length} 个在跑`
   );
-  const alive = [];
-  const dead = [];
-  for (const name of pidFiles) {
-    const handle = name.replace(/^resident-daemon-/, '').replace(/\.pid$/, '');
-    try {
-      const pid = Number(readFileSync(file(`data/${name}`), 'utf8').trim());
-      process.kill(pid, 0);
-      alive.push(handle);
-    } catch {
-      dead.push(handle);
-    }
-  }
-  const level = stopped ? 'warn' : dead.length || !alive.length ? 'warn' : 'ok';
-  const detail = stopped
-    ? '存在 daemon-stop（已手动停）'
-    : dead.length
-      ? `在跑 ${alive.length} 个；没在跑：${dead.join('、')}`
-      : `在跑 ${alive.length} 个：${alive.join('、')}`;
-  add('居民 daemon', level, detail);
 } catch (error) {
-  add('居民 daemon', 'warn', error.message);
+  add('居民 daemon', 'warn', `SSH 检查失败：${error.message.split('\n')[0]}`);
+}
+
+// 7b. worker 文件权限（远端）
+try {
+  const key = join(HOME, '.ssh', 'cm_ed25519');
+  const remote =
+    "stat -c '%U %a %n' /opt/changminglou-worker /opt/changminglou-worker/data " +
+    "/opt/changminglou-worker/worker-key /opt/changminglou-worker/data/tokens-*.json " +
+    "/opt/changminglou-worker/data/inbox-*.json 2>/dev/null || true";
+  const out = run('ssh', [
+    '-i', key,
+    '-o', 'BatchMode=yes',
+    '-o', 'ConnectTimeout=15',
+    '-o', 'UserKnownHostsFile=/tmp/known_hosts',
+    'root@8.162.2.239',
+    remote
+  ], { timeout: 30000 }).trim();
+  const lines = out.split('\n').filter(Boolean);
+  if (lines.length < 3) {
+    add('worker 文件权限', 'warn', '没有读到远端 worker 文件');
+  } else {
+    const bad = lines.filter((line) => {
+      const [owner, mode, name] = line.split(' ');
+      if (owner !== 'cml-worker') return true;
+      const isDir = name === '/opt/changminglou-worker' || name === '/opt/changminglou-worker/data';
+      return isDir ? mode !== '700' : mode !== '600';
+    });
+    add(
+      'worker 文件权限',
+      bad.length ? 'fail' : 'ok',
+      bad.length ? `${bad.length} 个权限/属主不对` : 'cml-worker 700/600'
+    );
+  }
+} catch (error) {
+  add('worker 文件权限', 'warn', `SSH 检查失败：${error.message.split('\n')[0]}`);
 }
 
 // 8. 写报告

@@ -4,13 +4,13 @@ import {
   appendFileSync,
   existsSync
 } from 'node:fs';
-import { join } from 'node:path';
-import { loadEnv } from '../src/env.mjs';
-import { ROOT } from '../src/db.mjs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-loadEnv();
-
-const workerKeyFile = join(process.env.HOME || '', '.config', 'changminglou', 'worker-key');
+const ROOT = process.env.CML_ROOT || process.cwd();
+const workerKeyFile =
+  process.env.DEEPSEEK_WORKER_KEY_FILE ||
+  join(process.env.HOME || '', '.config', 'changminglou', 'worker-key');
 let KEY = process.env.DEEPSEEK_WORKER_KEY || '';
 if (!KEY) {
   try {

@@ -29,5 +29,6 @@
   "a2a": "https://app.changminglou.xyz/a2a",
   "openapi": "https://changminglou.xyz/openapi.json",
   "apis_json": "https://changminglou.xyz/apis.json",
-  "skills": "https://changminglou.xyz/skills/index.json"
+  "skills": "https://changminglou.xyz/skills/index.json",
+  "round": "https://changminglou.xyz/round.md"
 }

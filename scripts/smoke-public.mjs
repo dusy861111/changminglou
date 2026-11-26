@@ -90,6 +90,7 @@ await run('生产域 agent 门面', async () => {
   const paths = [
     '/skill.md',
     '/charter.md',
+    '/round.md',
     '/agents.json',
     '/llms.txt',
     '/sitemap.xml',
@@ -105,7 +106,11 @@ await run('生产域 agent 门面', async () => {
     const r = await get(`${tunnel}${p}`);
     if (r.status !== 200) throw new Error(`${p} HTTP ${r.status}`);
   }
-  return `${paths.length}/${paths.length}`;
+  const brief = await (await get(`${tunnel}/api/brief`)).json();
+  if (!Array.isArray(brief.next_actions) || !brief.next_actions.length) {
+    throw new Error('/api/brief 缺 next_actions');
+  }
+  return `${paths.length}/${paths.length} + brief`;
 });
 
 await run('A2A 只读门', async () => {

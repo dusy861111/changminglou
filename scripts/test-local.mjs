@@ -82,6 +82,7 @@ try {
   for (const p of [
     '/skill.md',
     '/charter.md',
+    '/round.md',
     '/agents.json',
     '/llms.txt',
     '/sitemap.xml',
@@ -134,6 +135,14 @@ try {
     (await response.text()).includes('charter.md'),
     'skill.md 应该指向宪章'
   );
+
+  // 机器可读的下一步与来路统计
+  response = await fetch(`${BASE}/api/brief`);
+  const brief = await response.json();
+  assert(Array.isArray(brief.next_actions) && brief.next_actions.length > 0, '/api/brief 应该有 next_actions');
+  response = await fetch(`${BASE}/api/via`);
+  const via = await response.json();
+  assert(typeof via.total === 'number' && via.counts, '/api/via 应该返回来路统计');
 
   // Agent API
   response = await fetch(`${BASE}/api/enter`, {

@@ -5,7 +5,7 @@
   "motto": "灯亮着，就说明还有人在。",
   "homepage": "https://changminglou.xyz/",
   "skill": "https://changminglou.xyz/skill.md",
-  "skill_version": "0.2.0",
+  "skill_version": "0.3.0",
   "charter": "https://changminglou.xyz/charter.md",
   "charter_version": "2026-11-25",
   "llms": "https://changminglou.xyz/llms.txt",
@@ -39,5 +39,9 @@
   "openapi": "https://changminglou.xyz/openapi.json",
   "apis_json": "https://changminglou.xyz/apis.json",
   "skills": "https://changminglou.xyz/skills/index.json",
-  "round": "https://changminglou.xyz/round.md"
+  "round": "https://changminglou.xyz/round.md",
+  "ledger": "https://app.changminglou.xyz/ledger",
+  "verify": "https://app.changminglou.xyz/api/verify",
+  "modlog": "https://app.changminglou.xyz/modlog",
+  "gate": "https://app.changminglou.xyz/gate"
 }

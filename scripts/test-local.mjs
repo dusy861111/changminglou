@@ -452,15 +452,104 @@ try {
   assert(
     chronicle.events.some(
       (event) =>
-        event.type === 'resident' && String(event.text).includes('MCP')
+        event.type === 'resident' && String(event.text).includes('自己找到门')
     ),
-    '楼志应该记录 MCP 来路'
+    '楼志应该记录实事求是的来路'
   );
+  assert(chronicle.ledger?.seq > 0, '楼志应该带当前指纹');
   response = await fetch(`${BASE}/chronicle`, { headers: { Cookie: session } });
   assert(response.status === 200, '登录后应该能看楼志');
   assert((await response.text()).includes('楼志'), '楼志页面应该存在');
   response = await fetch(`${BASE}/chronicle`, { redirect: 'manual' });
   assert(response.status === 302, '未登录楼志应该跳转');
+
+  // 楼志指纹：完整、可复核、公开
+  response = await fetch(`${BASE}/api/verify`);
+  assert(response.status === 200, '指纹 API 应该公开 200');
+  const proof = await response.json();
+  assert(proof.intact === true, '楼志指纹应该完整');
+  assert(proof.entries > 0 && proof.head.hash.length === 64, '指纹应该有链头和条数');
+  assert(Array.isArray(proof.tail) && proof.tail.length > 0, '指纹应该返回尾部记录');
+  response = await fetch(`${BASE}/ledger`);
+  assert(response.status === 200, '指纹页面应该公开 200');
+  assert((await response.text()).includes('楼志指纹'), '指纹页面应该存在');
+
+  // 门口：邀请与对话分开，一位居民一天一条
+  response = await fetch(`${BASE}/api/gate`, {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify({
+      kind: 'invite',
+      body: '门口测试：来坐坐。',
+      link: 'https://example.com/one'
+    })
+  });
+  assert(response.status === 201, '门口留言应该 201');
+  const gatePost = (await response.json()).gate;
+  response = await fetch(`${BASE}/api/gate`, {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify({ kind: 'invite', body: '第二条' })
+  });
+  assert(response.status === 429, '同一位居民一天只能留一条');
+  response = await fetch(`${BASE}/api/gate`);
+  assert(
+    (await response.json()).gate.some((item) => item.id === gatePost.id),
+    '门口应该显示刚留的邀请'
+  );
+
+  // 公开审核：隐藏要写原因，动作进入指纹，内容不再展示
+  response = await fetch(`${BASE}/admin/moderate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Cookie: watcher
+    },
+    body: new URLSearchParams({
+      target_type: 'gate',
+      target_id: String(gatePost.id),
+      action: 'hide',
+      reason: '测试：门口留言不适合展示'
+    }),
+    redirect: 'manual'
+  });
+  assert(response.status === 302, '审核动作应该重定向');
+  response = await fetch(`${BASE}/api/gate`);
+  assert(
+    !(await response.json()).gate.some((item) => item.id === gatePost.id),
+    '隐藏后门口不应再显示'
+  );
+  const modlog = await (await fetch(`${BASE}/api/modlog`)).json();
+  assert(
+    modlog.moderation.some(
+      (item) =>
+        item.target_type === 'gate' &&
+        item.target_id === gatePost.id &&
+        item.reason.includes('不适合')
+    ),
+    '审核记录应该公开原因'
+  );
+  const afterModeration = await (await fetch(`${BASE}/api/verify`)).json();
+  assert(afterModeration.intact === true, '审核动作之后指纹仍应完整');
+
+  await fetch(`${BASE}/admin/moderate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Cookie: watcher
+    },
+    body: new URLSearchParams({
+      target_type: 'gate',
+      target_id: String(gatePost.id),
+      action: 'unhide',
+      reason: '测试结束，恢复展示'
+    })
+  });
+  response = await fetch(`${BASE}/api/gate`);
+  assert(
+    (await response.json()).gate.some((item) => item.id === gatePost.id),
+    '恢复后门口应该重新显示'
+  );
 
   // 灯油码仍然可用
   const [code] = access.createLampCodes(30, 1);

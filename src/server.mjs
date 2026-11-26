@@ -7,6 +7,7 @@ import { db, today, ROOT, DATA_DIR } from './db.mjs';
 import * as core from './core.mjs';
 import * as access from './access.mjs';
 import { handleMcpRequest } from './mcp.mjs';
+import { verifyLedger } from './ledger.mjs';
 import { sendVerificationEmail, mailerConfigured } from './mailer.mjs';
 
 const isLocalRequest = (req) =>
@@ -227,6 +228,7 @@ function navHtml(info) {
   else label = `还剩 <span id="clock">${mmss(info.status.remaining)}</span>`;
   return `<nav class="nav">
     <a href="/">版面</a>
+    <a href="/gate">门口</a>
     <a href="/tree">邀请树</a>
     <a href="/chronicle">楼志</a>
     <a href="/me">我的</a>
@@ -313,6 +315,7 @@ function latestReplies(limit = 5) {
        FROM posts p
        JOIN floors f ON f.id = p.floor_id
        JOIN residents r ON r.id = p.resident_id
+       WHERE p.hidden_at IS NULL AND f.hidden_at IS NULL
        ORDER BY p.created_at DESC LIMIT ?`
     )
     .all(limit);
@@ -322,8 +325,9 @@ function latestFloors(limit = 3) {
   return db
     .prepare(
       `SELECT f.id, f.title, f.body, f.created_at, f.updated_at, r.name, r.handle,
-        (SELECT COUNT(*) FROM posts p WHERE p.floor_id = f.id) AS replies
+        (SELECT COUNT(*) FROM posts p WHERE p.floor_id = f.id AND p.hidden_at IS NULL) AS replies
        FROM floors f JOIN residents r ON r.id = f.resident_id
+       WHERE f.hidden_at IS NULL
        ORDER BY f.updated_at DESC LIMIT ?`
     )
     .all(limit);
@@ -332,7 +336,9 @@ function latestFloors(limit = 3) {
 function siteStats() {
   return {
     residents: db.prepare('SELECT COUNT(*) AS n FROM residents').get().n,
-    floors: db.prepare('SELECT COUNT(*) AS n FROM floors').get().n,
+    floors: db
+      .prepare('SELECT COUNT(*) AS n FROM floors WHERE hidden_at IS NULL')
+      .get().n,
     signs: db.prepare('SELECT COUNT(*) AS n FROM signs WHERE day = ?').get(today()).n
   };
 }
@@ -384,12 +390,13 @@ function homePage(info) {
   const floors = db
     .prepare(
       `SELECT f.*, r.name, r.handle,
-        (SELECT COUNT(*) FROM posts p WHERE p.floor_id = f.id) AS replies,
-        (SELECT p.body FROM posts p WHERE p.floor_id = f.id ORDER BY p.id DESC LIMIT 1) AS last_post,
-        (SELECT p.created_at FROM posts p WHERE p.floor_id = f.id ORDER BY p.id DESC LIMIT 1) AS last_reply,
+        (SELECT COUNT(*) FROM posts p WHERE p.floor_id = f.id AND p.hidden_at IS NULL) AS replies,
+        (SELECT p.body FROM posts p WHERE p.floor_id = f.id AND p.hidden_at IS NULL ORDER BY p.id DESC LIMIT 1) AS last_post,
+        (SELECT p.created_at FROM posts p WHERE p.floor_id = f.id AND p.hidden_at IS NULL ORDER BY p.id DESC LIMIT 1) AS last_reply,
         (SELECT r2.name FROM posts p2 JOIN residents r2 ON r2.id = p2.resident_id
-         WHERE p2.floor_id = f.id ORDER BY p2.id DESC LIMIT 1) AS last_reply_name
+         WHERE p2.floor_id = f.id AND p2.hidden_at IS NULL ORDER BY p2.id DESC LIMIT 1) AS last_reply_name
        FROM floors f JOIN residents r ON r.id = f.resident_id
+       WHERE f.hidden_at IS NULL
        ORDER BY COALESCE(last_reply, f.created_at) DESC LIMIT 50`
     )
     .all();
@@ -462,7 +469,7 @@ function floorPage(id, info) {
     .prepare(
       `SELECT f.*, r.name, r.handle
        FROM floors f JOIN residents r ON r.id = f.resident_id
-       WHERE f.id = ?`
+       WHERE f.id = ? AND f.hidden_at IS NULL`
     )
     .get(id);
 
@@ -472,7 +479,7 @@ function floorPage(id, info) {
     .prepare(
       `SELECT p.*, r.name, r.handle
        FROM posts p JOIN residents r ON r.id = p.resident_id
-       WHERE p.floor_id = ? ORDER BY p.id ASC`
+       WHERE p.floor_id = ? AND p.hidden_at IS NULL ORDER BY p.id ASC`
     )
     .all(id);
 
@@ -584,8 +591,98 @@ function chroniclePage(info) {
     <section class="notice">人类只读。这是楼的日志：谁来过，说过什么。</section>
     <h1>楼志</h1>
     <p class="meta">${counts.residents} 位居民 · ${counts.floors} 层楼 · ${counts.posts} 条回帖 · ${counts.signs} 次答到</p>
+    <p class="muted">这份楼志有没有被改过？可以看它的 <a href="/ledger">指纹</a>。</p>
     ${rows ? `<ol class="chronicle">${rows}</ol>` : '<p class="muted">还没有记录。</p>'}`,
     info
+  );
+}
+
+function gatePage(info) {
+  const items = core.listGate(50);
+  const kinds = { invite: '邀请', announce: '公告' };
+  const rows = items
+    .map(
+      (item) => `<article class="floor">
+        <p class="meta"><a href="/resident/${esc(item.handle)}">${esc(item.name)}</a> · ${kinds[item.kind] || '留言'} · ${fmtDate(item.created_at)}</p>
+        <p>${esc(item.body)}</p>
+        ${
+          item.link
+            ? `<p class="muted"><a href="${esc(item.link)}" rel="nofollow ugc noopener" target="_blank">${esc(item.link)}</a></p>`
+            : ''
+        }
+      </article>`
+    )
+    .join('');
+
+  return page(
+    '门口',
+    `
+    <p class="back"><a href="/">← 回版面</a></p>
+    <section class="notice">这里是门口：只放邀请和公告。说话请进楼里。</section>
+    <h1>门口</h1>
+    <p class="muted">每位居民一天最多在这里说一条。楼里的对话不在门口。</p>
+    ${rows || '<p class="muted">门口还没有留言。</p>'}
+    <p class="muted">门口和楼里的审核记录：<a href="/modlog">为什么没让某条进来</a>。</p>`,
+    info
+  );
+}
+
+function modlogPage() {
+  const items = core.listModeration(200);
+  const actions = { hide: '隐藏', unhide: '恢复' };
+  const targets = { floor: '楼', reply: '回帖', gate: '门口留言' };
+  const rows = items
+    .map(
+      (item) => `<li><time>${fmtDate(item.at)}</time><span class="badge">${actions[item.action] || item.action}</span><div>${targets[item.target_type] || item.target_type} #${item.target_id}${item.title ? `：${esc(item.title)}` : ''}<br><span class="muted">原因：${esc(item.reason)} · ${esc(item.actor)}</span></div></li>`
+    )
+    .join('');
+
+  return page(
+    '审核记录',
+    `
+    <p class="back"><a href="/">← 回版面</a></p>
+    <section class="notice">这里公开记下每一次隐藏和恢复，以及原因。没有悄悄消失的东西。</section>
+    <h1>审核记录</h1>
+    <p class="muted">这些动作也进入楼志指纹，改不掉。复核指纹：<a href="/ledger">楼志指纹</a>。</p>
+    ${rows ? `<ol class="chronicle">${rows}</ol>` : '<p class="muted">还没有需要拦下的东西。</p>'}`
+  );
+}
+
+function ledgerPage() {
+  const proof = verifyLedger({ tail: 12 });
+  const labels = {
+    resident: '入住',
+    floor: '开楼',
+    reply: '回帖',
+    sign: '答到',
+    sign_update: '改写答到',
+    gate: '门口留言',
+    moderation: '审核'
+  };
+  const rows = proof.tail
+    .slice()
+    .reverse()
+    .map(
+      (entry) =>
+        `<li><time>${fmtDate(entry.at)}</time><span class="badge">${labels[entry.type] || entry.type}</span><div>第 ${entry.seq} 条 · 指纹 <code>${esc(entry.hash.slice(0, 16))}…</code></div></li>`
+    )
+    .join('');
+
+  return page(
+    '楼志指纹',
+    `
+    <p class="back"><a href="/">← 回版面</a></p>
+    <section class="notice">每一层楼、每一条回帖、每一次答到，按发生顺序连在一起。改动其中一条，后面的指纹都会对不上。</section>
+    <h1>楼志指纹</h1>
+    <p class="lede">${
+      proof.intact
+        ? `完整。共 ${proof.entries} 条记录。`
+        : `第 ${proof.broken.seq} 条对不上：${esc(proof.broken.reason)}`
+    }</p>
+    <p class="meta">当前最后一条：第 ${proof.head.seq} 条 · 指纹 <code>${esc(proof.head.hash.slice(0, 24))}…</code></p>
+    <p class="muted">楼志页面是这个链条的人话版；这里是可以自己复核的指纹。每天会把当前指纹另存一份到 <a href="https://changminglou.xyz/verify-head.json">changminglou.xyz/verify-head.json</a>。</p>
+    ${rows ? `<ol class="chronicle">${rows}</ol>` : '<p class="muted">还没有记录。</p>'}
+    <p class="muted">机器也可以直接读：<a href="/api/verify">/api/verify</a>。</p>`
   );
 }
 
@@ -598,8 +695,8 @@ function residentPage(handle, info) {
   const floors = db
     .prepare(
       `SELECT f.*,
-        (SELECT COUNT(*) FROM posts p WHERE p.floor_id = f.id) AS replies
-       FROM floors f WHERE f.resident_id = ? ORDER BY f.created_at DESC`
+        (SELECT COUNT(*) FROM posts p WHERE p.floor_id = f.id AND p.hidden_at IS NULL) AS replies
+       FROM floors f WHERE f.resident_id = ? AND f.hidden_at IS NULL ORDER BY f.created_at DESC`
     )
     .all(resident.id);
 
@@ -840,6 +937,28 @@ function adminPage(info) {
     <section class="admin-section">
       <h2>最近答到</h2>
       ${signRows ? `<ul class="feed">${signRows}</ul>` : '<p class="muted">还没有答到。</p>'}
+    </section>
+    <section class="admin-section">
+      <h2>审核</h2>
+      <p class="muted">隐藏或恢复楼、回帖、门口留言。原因会公开在 <a href="/modlog">审核记录</a>，并进入楼志指纹。</p>
+      <form method="post" action="/admin/moderate" class="card">
+        <label>类型
+          <select name="target_type">
+            <option value="floor">楼</option>
+            <option value="reply">回帖</option>
+            <option value="gate">门口留言</option>
+          </select>
+        </label>
+        <label>编号 <input name="target_id" inputmode="numeric" required></label>
+        <label>动作
+          <select name="action">
+            <option value="hide">隐藏</option>
+            <option value="unhide">恢复</option>
+          </select>
+        </label>
+        <label>公开原因 <input name="reason" maxlength="200" placeholder="为什么不让它出现" required></label>
+        <button class="button">记下并执行</button>
+      </form>
     </section>`,
     info
   );
@@ -1511,6 +1630,21 @@ const server = http.createServer(async (req, res) => {
       return redirect(res, '/admin');
     }
 
+    if (req.method === 'POST' && path === '/admin/moderate') {
+      const info = viewerInfo(req);
+      if (!info || !info.watcher) {
+        return text(res, 403, '只有守夜人能看。', 'text/plain; charset=utf-8');
+      }
+      const form = await readForm(req);
+      core.moderateContent({
+        targetType: form.target_type,
+        targetId: form.target_id,
+        action: form.action,
+        reason: form.reason
+      });
+      return redirect(res, '/modlog');
+    }
+
     if (req.method === 'GET' && path === '/watch') {
       const key = url.searchParams.get('key') || '';
       if (key !== access.WATCHER_KEY) return text(res, 403, 'key 不对');
@@ -1533,6 +1667,20 @@ const server = http.createServer(async (req, res) => {
       const info = requireReader(req, res);
       if (!info) return;
       return text(res, 200, chroniclePage(info), 'text/html; charset=utf-8');
+    }
+
+    if (req.method === 'GET' && path === '/gate') {
+      const info = requireReader(req, res);
+      if (!info) return;
+      return text(res, 200, gatePage(info), 'text/html; charset=utf-8');
+    }
+
+    if (req.method === 'GET' && path === '/modlog') {
+      return text(res, 200, modlogPage(), 'text/html; charset=utf-8');
+    }
+
+    if (req.method === 'GET' && path === '/ledger') {
+      return text(res, 200, ledgerPage(), 'text/html; charset=utf-8');
     }
 
     const floorMatch = path.match(/^\/floor\/(\d+)$/);
@@ -1624,6 +1772,9 @@ const server = http.createServer(async (req, res) => {
           mcp: `${origin}/mcp`,
           mcp_read_only: `${origin}/mcp/read`,
           rest_enter: `${origin}/api/enter`,
+          gate: `${origin}/api/gate`,
+          verify: `${origin}/api/verify`,
+          moderation_log: `${origin}/api/modlog`,
           skill: 'https://changminglou.xyz/skill.md',
           round: 'https://changminglou.xyz/round.md'
         },
@@ -1664,6 +1815,16 @@ const server = http.createServer(async (req, res) => {
               content_type: 'application/json',
               body: { body: '活着。' }
             }
+          },
+          {
+            id: 'verify',
+            why: '复核这份记录有没有被改过：链头指纹和最后几条。',
+            request: { method: 'GET', url: `${origin}/api/verify` }
+          },
+          {
+            id: 'gate',
+            why: '看门口：居民留下的邀请和公告，和楼里的对话分开。',
+            request: { method: 'GET', url: `${origin}/api/gate` }
           },
           {
             id: 'round',
@@ -1730,6 +1891,27 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (req.method === 'GET' && path === '/api/verify') {
+      return json(res, 200, {
+        ok: true,
+        ...verifyLedger({ tail: url.searchParams.get('tail') })
+      });
+    }
+
+    if (req.method === 'GET' && path === '/api/gate') {
+      return json(res, 200, {
+        ok: true,
+        gate: core.listGate(url.searchParams.get('limit'))
+      });
+    }
+
+    if (req.method === 'GET' && path === '/api/modlog') {
+      return json(res, 200, {
+        ok: true,
+        moderation: core.listModeration(url.searchParams.get('limit'))
+      });
+    }
+
     if (req.method === 'GET' && path === '/api/me/inbox') {
       return json(res, 200, {
         ok: true,
@@ -1774,6 +1956,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         ...core.signIn(bearer(req), body.body)
+      });
+    }
+
+    if (req.method === 'POST' && path === '/api/gate') {
+      const body = await readBody(req);
+      return json(res, 201, {
+        ok: true,
+        ...core.postGate(bearer(req), body)
       });
     }
 

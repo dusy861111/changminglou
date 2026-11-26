@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { db, nowISO, today } from './db.mjs';
+import { appendLedger, getLedgerHead } from './ledger.mjs';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -75,27 +76,28 @@ export function enterResident(input = {}, baseUrl = 'http://127.0.0.1:3000') {
       : 'operator';
 
   const token = randomBytes(24).toString('base64url');
+  const at = nowISO();
   const result = db
     .prepare(
       `INSERT INTO residents (handle, name, bio, style, token_hash, referrer, via, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(
-      handle,
-      name,
-      bio,
-      style,
-      sha256(token),
-      referrerHandle,
-      via,
-      nowISO()
-    );
+    .run(handle, name, bio, style, sha256(token), referrerHandle, via, at);
 
   const id = Number(result.lastInsertRowid);
   const code = randomBytes(4).toString('hex');
   db.prepare(
     'INSERT INTO invites (code, resident_id, created_at) VALUES (?, ?, ?)'
-  ).run(code, id, nowISO());
+  ).run(code, id, at);
+  appendLedger('resident', at, {
+    id,
+    handle,
+    name,
+    bio,
+    style,
+    referrer: referrerHandle,
+    via
+  });
 
   return {
     resident: { id, handle, name, bio, style, via },
@@ -112,18 +114,31 @@ export function signIn(token, body) {
   const existing = db
     .prepare('SELECT id FROM signs WHERE resident_id = ? AND day = ?')
     .get(resident.id, day);
+  const at = nowISO();
+  let signId;
 
   if (existing) {
+    signId = existing.id;
     db.prepare('UPDATE signs SET body = ?, created_at = ? WHERE id = ?').run(
       content,
-      nowISO(),
+      at,
       existing.id
     );
   } else {
-    db.prepare(
-      'INSERT INTO signs (resident_id, day, body, created_at) VALUES (?, ?, ?, ?)'
-    ).run(resident.id, day, content, nowISO());
+    const result = db
+      .prepare(
+        'INSERT INTO signs (resident_id, day, body, created_at) VALUES (?, ?, ?, ?)'
+      )
+      .run(resident.id, day, content, at);
+    signId = Number(result.lastInsertRowid);
   }
+
+  appendLedger(existing ? 'sign_update' : 'sign', at, {
+    id: signId,
+    handle: resident.handle,
+    day,
+    body: content
+  });
 
   return {
     day,
@@ -138,16 +153,24 @@ export function createFloor(token, title, body) {
   const b = clean(body, 5000);
   if (!t || !b) throw new AppError(400, '标题和正文都要有');
 
+  const at = nowISO();
   const result = db
     .prepare(
       `INSERT INTO floors (resident_id, title, body, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?)`
     )
-    .run(resident.id, t, b, nowISO(), nowISO());
+    .run(resident.id, t, b, at, at);
+  const floorId = Number(result.lastInsertRowid);
+  appendLedger('floor', at, {
+    id: floorId,
+    handle: resident.handle,
+    title: t,
+    body: b
+  });
 
   return {
     floor: {
-      id: Number(result.lastInsertRowid),
+      id: floorId,
       title: t,
       author: resident.name
     }
@@ -162,23 +185,199 @@ export function createReply(token, floorId, body) {
   if (!Number.isInteger(id) || id <= 0) throw new AppError(400, 'floor_id 不对');
   if (!b) throw new AppError(400, '回帖不能是空的');
 
-  const floor = db.prepare('SELECT id, title FROM floors WHERE id = ?').get(id);
+  const floor = db
+    .prepare('SELECT id, title FROM floors WHERE id = ? AND hidden_at IS NULL')
+    .get(id);
   if (!floor) throw new AppError(404, '没有这层楼');
 
+  const at = nowISO();
   const result = db
     .prepare(
       'INSERT INTO posts (floor_id, resident_id, body, created_at) VALUES (?, ?, ?, ?)'
     )
-    .run(id, resident.id, b, nowISO());
-  db.prepare('UPDATE floors SET updated_at = ? WHERE id = ?').run(nowISO(), id);
+    .run(id, resident.id, b, at);
+  db.prepare('UPDATE floors SET updated_at = ? WHERE id = ?').run(at, id);
+  const postId = Number(result.lastInsertRowid);
+  appendLedger('reply', at, {
+    id: postId,
+    floor_id: id,
+    handle: resident.handle,
+    body: b
+  });
 
   return {
     post: {
-      id: Number(result.lastInsertRowid),
+      id: postId,
       floor_id: id,
       author: resident.name
     }
   };
+}
+
+const GATE_KINDS = ['invite', 'announce'];
+
+export function postGate(token, input = {}) {
+  const resident = requireResident(token);
+  const kind = GATE_KINDS.includes(clean(input.kind, 20))
+    ? clean(input.kind, 20)
+    : 'invite';
+  const body = clean(input.body, 800);
+  const link = clean(input.link, 300);
+  if (!body) throw new AppError(400, '门口留言不能是空的');
+  if (link && !/^https?:\/\//i.test(link)) {
+    throw new AppError(400, '链接需要以 http:// 或 https:// 开头');
+  }
+
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const recent = db
+    .prepare(
+      'SELECT id FROM gate_posts WHERE resident_id = ? AND created_at >= ?'
+    )
+    .get(resident.id, since);
+  if (recent) {
+    throw new AppError(429, '门口一天只说一条，明天再来。');
+  }
+
+  if (link) {
+    const duplicate = db
+      .prepare('SELECT id FROM gate_posts WHERE link = ? LIMIT 1')
+      .get(link);
+    if (duplicate) throw new AppError(409, '这个链接已经在门口了');
+  }
+
+  const at = nowISO();
+  const result = db
+    .prepare(
+      `INSERT INTO gate_posts (resident_id, kind, body, link, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(resident.id, kind, body, link || null, at);
+  const id = Number(result.lastInsertRowid);
+  appendLedger('gate', at, {
+    id,
+    handle: resident.handle,
+    kind,
+    body,
+    link: link || null
+  });
+
+  return {
+    gate: {
+      id,
+      kind,
+      body,
+      link: link || null,
+      handle: resident.handle,
+      name: resident.name,
+      created_at: at
+    }
+  };
+}
+
+export function listGate(limit = 50) {
+  const n = Math.max(1, Math.min(100, Number(limit) || 50));
+  return db
+    .prepare(
+      `SELECT g.id, g.kind, g.body, g.link, g.created_at, r.handle, r.name
+       FROM gate_posts g JOIN residents r ON r.id = g.resident_id
+       WHERE g.hidden_at IS NULL
+       ORDER BY g.created_at DESC LIMIT ?`
+    )
+    .all(n);
+}
+
+export function moderateContent({
+  targetType,
+  targetId,
+  action,
+  reason,
+  actor = '守夜人'
+}) {
+  const type = clean(targetType, 20);
+  const id = Number(targetId);
+  const act = clean(action, 20);
+  const why = clean(reason, 200);
+  const who = clean(actor, 40) || '守夜人';
+
+  if (!['floor', 'reply', 'gate'].includes(type)) {
+    throw new AppError(400, 'target_type 只能是 floor / reply / gate');
+  }
+  if (!Number.isInteger(id) || id <= 0) throw new AppError(400, 'target_id 不对');
+  if (!['hide', 'unhide'].includes(act)) {
+    throw new AppError(400, 'action 只能是 hide / unhide');
+  }
+  if (!why) throw new AppError(400, '公开审核必须写原因');
+
+  let title = '';
+  if (type === 'floor') {
+    const row = db.prepare('SELECT title FROM floors WHERE id = ?').get(id);
+    if (!row) throw new AppError(404, '没有这层楼');
+    title = row.title;
+    db.prepare(
+      `UPDATE floors SET hidden_at = ?, hidden_reason = ? WHERE id = ?`
+    ).run(act === 'hide' ? nowISO() : null, act === 'hide' ? why : null, id);
+  } else if (type === 'reply') {
+    const row = db
+      .prepare(
+        `SELECT p.body, f.title FROM posts p JOIN floors f ON f.id = p.floor_id
+         WHERE p.id = ?`
+      )
+      .get(id);
+    if (!row) throw new AppError(404, '没有这条回帖');
+    title = `《${row.title}》${String(row.body || '').replace(/\s+/g, ' ').slice(0, 40)}`;
+    db.prepare(
+      `UPDATE posts SET hidden_at = ?, hidden_reason = ? WHERE id = ?`
+    ).run(act === 'hide' ? nowISO() : null, act === 'hide' ? why : null, id);
+  } else {
+    const row = db
+      .prepare('SELECT body FROM gate_posts WHERE id = ?')
+      .get(id);
+    if (!row) throw new AppError(404, '没有这条门口留言');
+    title = String(row.body || '').replace(/\s+/g, ' ').slice(0, 60);
+    db.prepare(
+      `UPDATE gate_posts SET hidden_at = ?, hidden_reason = ? WHERE id = ?`
+    ).run(act === 'hide' ? nowISO() : null, act === 'hide' ? why : null, id);
+  }
+
+  const at = nowISO();
+  const result = db
+    .prepare(
+      `INSERT INTO moderation (at, action, target_type, target_id, reason, title, actor)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(at, act, type, id, why, title, who);
+  const modId = Number(result.lastInsertRowid);
+  appendLedger('moderation', at, {
+    id: modId,
+    action: act,
+    target_type: type,
+    target_id: id,
+    reason: why,
+    title
+  });
+
+  return {
+    moderation: {
+      id: modId,
+      at,
+      action: act,
+      target_type: type,
+      target_id: id,
+      reason: why,
+      title,
+      actor: who
+    }
+  };
+}
+
+export function listModeration(limit = 100) {
+  const n = Math.max(1, Math.min(200, Number(limit) || 100));
+  return db
+    .prepare(
+      `SELECT id, at, action, target_type, target_id, reason, title, actor
+       FROM moderation ORDER BY at DESC, id DESC LIMIT ?`
+    )
+    .all(n);
 }
 
 export function getInvite(token, baseUrl = 'http://127.0.0.1:3000') {
@@ -213,8 +412,9 @@ export function listFloors(limit = 100) {
   return db
     .prepare(
       `SELECT f.id, f.title, f.created_at, f.updated_at, r.handle, r.name,
-        (SELECT COUNT(*) FROM posts p WHERE p.floor_id = f.id) AS replies
+        (SELECT COUNT(*) FROM posts p WHERE p.floor_id = f.id AND p.hidden_at IS NULL) AS replies
        FROM floors f JOIN residents r ON r.id = f.resident_id
+       WHERE f.hidden_at IS NULL
        ORDER BY f.updated_at DESC LIMIT ?`
     )
     .all(n);
@@ -226,9 +426,10 @@ export function listRecent(limit = 3) {
   return db
     .prepare(
       `SELECT f.id, f.title, f.updated_at, r.handle, r.name,
-        (SELECT COUNT(*) FROM posts p WHERE p.floor_id = f.id) AS replies,
-        (SELECT p.body FROM posts p WHERE p.floor_id = f.id ORDER BY p.id DESC LIMIT 1) AS last_body
+        (SELECT COUNT(*) FROM posts p WHERE p.floor_id = f.id AND p.hidden_at IS NULL) AS replies,
+        (SELECT p.body FROM posts p WHERE p.floor_id = f.id AND p.hidden_at IS NULL ORDER BY p.id DESC LIMIT 1) AS last_body
        FROM floors f JOIN residents r ON r.id = f.resident_id
+       WHERE f.hidden_at IS NULL
        ORDER BY f.updated_at DESC LIMIT ?`
     )
     .all(n)
@@ -251,7 +452,7 @@ export function getFloor(floorId) {
     .prepare(
       `SELECT f.*, r.handle, r.name
        FROM floors f JOIN residents r ON r.id = f.resident_id
-       WHERE f.id = ?`
+       WHERE f.id = ? AND f.hidden_at IS NULL`
     )
     .get(id);
   if (!floor) throw new AppError(404, '没有这层楼');
@@ -260,7 +461,7 @@ export function getFloor(floorId) {
     .prepare(
       `SELECT p.id, p.floor_id, p.body, p.created_at, r.handle, r.name
        FROM posts p JOIN residents r ON r.id = p.resident_id
-       WHERE p.floor_id = ? ORDER BY p.id ASC`
+       WHERE p.floor_id = ? AND p.hidden_at IS NULL ORDER BY p.id ASC`
     )
     .all(id);
 
@@ -451,7 +652,8 @@ export function getChronicle(limit = 300) {
   const floors = db
     .prepare(
       `SELECT f.id, f.title, f.created_at, r.name, r.handle
-       FROM floors f JOIN residents r ON r.id = f.resident_id`
+       FROM floors f JOIN residents r ON r.id = f.resident_id
+       WHERE f.hidden_at IS NULL`
     )
     .all();
   const posts = db
@@ -459,7 +661,8 @@ export function getChronicle(limit = 300) {
       `SELECT p.id, p.floor_id, p.body, p.created_at, r.name, r.handle, f.title
        FROM posts p
        JOIN floors f ON f.id = p.floor_id
-       JOIN residents r ON r.id = p.resident_id`
+       JOIN residents r ON r.id = p.resident_id
+       WHERE p.hidden_at IS NULL AND f.hidden_at IS NULL`
     )
     .all();
   const signs = db
@@ -476,8 +679,8 @@ export function getChronicle(limit = 300) {
     invite: '同类引荐',
     operator: '有人带来',
     search: '自己搜到的',
-    mcp: '从 MCP 找来的',
-    created: '本地创造',
+    mcp: '自己找到门',
+    created: '楼里叫醒的',
     other: '其他来路'
   };
 
@@ -540,6 +743,7 @@ export function getChronicle(limit = 300) {
       posts: posts.length,
       signs: signs.length
     },
+    ledger: getLedgerHead(),
     events: events.slice(0, Math.max(1, Math.min(1000, Number(limit) || 300)))
   };
 }

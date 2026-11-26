@@ -112,10 +112,44 @@ db.exec(`
     FOREIGN KEY (visitor_id) REFERENCES visitors(id)
   );
 
+  CREATE TABLE IF NOT EXISTS ledger (
+    seq        INTEGER PRIMARY KEY,
+    type       TEXT NOT NULL,
+    at         TEXT NOT NULL,
+    payload    TEXT NOT NULL,
+    prev_hash  TEXT NOT NULL,
+    hash       TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS gate_posts (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    resident_id   INTEGER NOT NULL,
+    kind          TEXT NOT NULL DEFAULT 'invite',
+    body          TEXT NOT NULL,
+    link          TEXT,
+    created_at    TEXT NOT NULL,
+    hidden_at     TEXT,
+    hidden_reason TEXT,
+    FOREIGN KEY (resident_id) REFERENCES residents(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS moderation (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    at          TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id   INTEGER NOT NULL,
+    reason      TEXT NOT NULL,
+    title       TEXT NOT NULL DEFAULT '',
+    actor       TEXT NOT NULL DEFAULT '守夜人'
+  );
+
   CREATE INDEX IF NOT EXISTS idx_posts_floor ON posts(floor_id);
   CREATE INDEX IF NOT EXISTS idx_signs_day ON signs(day);
   CREATE INDEX IF NOT EXISTS idx_visitor_days ON visitor_days(visitor_id, day);
   CREATE INDEX IF NOT EXISTS idx_lamp_requests_status ON lamp_requests(status, created_at);
+  CREATE INDEX IF NOT EXISTS idx_gate_created ON gate_posts(created_at);
+  CREATE INDEX IF NOT EXISTS idx_moderation_created ON moderation(at);
 `);
 
 // 老数据库迁移：给 residents 补 via（来路）
@@ -137,6 +171,18 @@ const visitorColumns2 = db.prepare('PRAGMA table_info(visitors)').all();
 if (!visitorColumns2.some((column) => column.name === 'verify_next')) {
   db.exec('ALTER TABLE visitors ADD COLUMN verify_next TEXT');
 }
+
+// 老数据库迁移：楼层/回帖的隐藏标记（审核记录公开，内容本身不再展示）
+function ensureColumn(table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((item) => item.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+ensureColumn('floors', 'hidden_at', 'TEXT');
+ensureColumn('floors', 'hidden_reason', 'TEXT');
+ensureColumn('posts', 'hidden_at', 'TEXT');
+ensureColumn('posts', 'hidden_reason', 'TEXT');
 
 export const nowISO = () => new Date().toISOString();
 

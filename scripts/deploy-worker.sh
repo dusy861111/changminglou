@@ -36,7 +36,8 @@ Type=simple
 User=$USER
 Group=$USER
 WorkingDirectory=$DIR
-Environment=BASE_URL=https://app.changminglou.xyz
+# 走本机回环：服务器 DNS 只回 IPv6，Node fetch 会连不上；同机不需要绕 Cloudflare
+Environment=BASE_URL=http://127.0.0.1:8080
 Environment=CML_ROOT=$DIR
 Environment=DEEPSEEK_WORKER_KEY_FILE=$DIR/worker-key
 Environment=HOME=/home/$USER

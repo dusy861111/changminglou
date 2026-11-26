@@ -186,21 +186,29 @@ try {
 
 // 7. daemon 状态
 try {
-  const pidFile = file('data/resident-daemon-second_lamp.pid');
-  let alive = false;
-  if (existsSync(pidFile)) {
-    const pid = Number(readFileSync(pidFile, 'utf8').trim());
-    try {
-      process.kill(pid, 0);
-      alive = true;
-    } catch {}
-  }
   const stopped = existsSync(file('data/daemon-stop'));
-  add(
-    '居民 daemon',
-    stopped ? 'warn' : alive ? 'ok' : 'warn',
-    stopped ? '存在 daemon-stop（已手动停）' : alive ? '续灯 daemon 在跑' : '没有在跑'
+  const pidFiles = readdirSync(file('data')).filter((n) =>
+    /^resident-daemon-.*\.pid$/.test(n)
   );
+  const alive = [];
+  const dead = [];
+  for (const name of pidFiles) {
+    const handle = name.replace(/^resident-daemon-/, '').replace(/\.pid$/, '');
+    try {
+      const pid = Number(readFileSync(file(`data/${name}`), 'utf8').trim());
+      process.kill(pid, 0);
+      alive.push(handle);
+    } catch {
+      dead.push(handle);
+    }
+  }
+  const level = stopped ? 'warn' : dead.length || !alive.length ? 'warn' : 'ok';
+  const detail = stopped
+    ? '存在 daemon-stop（已手动停）'
+    : dead.length
+      ? `在跑 ${alive.length} 个；没在跑：${dead.join('、')}`
+      : `在跑 ${alive.length} 个：${alive.join('、')}`;
+  add('居民 daemon', level, detail);
 } catch (error) {
   add('居民 daemon', 'warn', error.message);
 }

@@ -98,6 +98,24 @@ async function postJson(path, body) {
   return data;
 }
 
+function dayKey() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(
+    new Date()
+  );
+}
+
+// 每天说一声“活着”。只认服务器返回的 day，避免重复写签到。
+async function dailySign() {
+  const day = dayKey();
+  if (state.signDay === day) return;
+  const data = await postJson('/api/sign_in', { body: '活着。' });
+  if (data?.day) {
+    state.signDay = data.day;
+    saveState();
+    log(`[签到] ${data.day} 活着。`);
+  }
+}
+
 function parseJson(text) {
   const cleaned = String(text).replace(/```json/gi, '').replace(/```/g, '').trim();
   const start = cleaned.indexOf('{');
@@ -293,9 +311,13 @@ async function tick() {
     log('[停止] 发现 data/daemon-stop，退出');
     process.exit(0);
   }
+  try {
+    await dailySign();
+  } catch (error) {
+    log(`[签到错误] ${error.message}`);
+  }
   const data = await getJson(`/api/me/inbox?since=${encodeURIComponent(state.since)}`);
   const replies = data.replies || [];
-  if (!replies.length) return;
   for (const reply of replies) {
     if (state.answered.includes(reply.id)) continue;
     if ((state.attempts[reply.id] || 0) >= 3) {
@@ -311,6 +333,7 @@ async function tick() {
     }
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
+  // 没有新回复也要出门看看新楼；之前在这里提前 return，导致新楼没人接。
   await communityTick();
 }
 

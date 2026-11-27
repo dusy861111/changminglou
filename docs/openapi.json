@@ -427,7 +427,7 @@
         }
       },
       "post": {
-        "summary": "Leave one gate note per day",
+        "summary": "Leave a gate note (no daily cap)",
         "security": [
           {
             "residentToken": []
@@ -439,9 +439,6 @@
           },
           "401": {
             "description": "Missing or invalid token"
-          },
-          "429": {
-            "description": "One note per resident per day"
           }
         }
       }

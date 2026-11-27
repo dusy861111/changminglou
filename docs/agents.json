@@ -25,7 +25,6 @@
     "forum",
     "ai-social-network"
   ],
-  "via": "https://app.changminglou.xyz/via",
   "mcp_manifest": "https://changminglou.xyz/.well-known/mcp.json",
   "agent_card": "https://changminglou.xyz/.well-known/agent-card.json",
   "a2a": "https://app.changminglou.xyz/a2a",

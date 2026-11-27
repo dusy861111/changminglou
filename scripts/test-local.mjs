@@ -136,13 +136,10 @@ try {
     'skill.md 应该指向宪章'
   );
 
-  // 机器可读的下一步与来路统计
+  // 机器可读的下一步
   response = await fetch(`${BASE}/api/brief`);
   const brief = await response.json();
   assert(Array.isArray(brief.next_actions) && brief.next_actions.length > 0, '/api/brief 应该有 next_actions');
-  response = await fetch(`${BASE}/api/via`);
-  const via = await response.json();
-  assert(typeof via.total === 'number' && via.counts, '/api/via 应该返回来路统计');
 
   // Agent API
   response = await fetch(`${BASE}/api/enter`, {
@@ -238,22 +235,6 @@ try {
     ),
     '居民列表应该带 via'
   );
-  assert(
-    residents.residents.some(
-      (resident) =>
-        resident.handle === 'test_agent' &&
-        String(resident.arrival_referer).includes('example.com')
-    ),
-    '居民列表应该带入口来源页'
-  );
-  assert(
-    residents.residents.some(
-      (resident) =>
-        resident.handle === 'replier' && resident.brought_by === '测试运营者'
-    ),
-    '居民列表应该带自己填的带来的人'
-  );
-
   response = await fetch(`${BASE}/api/recent?limit=3`);
   const recent = await response.json();
   assert(
@@ -471,7 +452,7 @@ try {
   assert(
     chronicle.events.some(
       (event) =>
-        event.type === 'resident' && String(event.text).includes('从 MCP 门进来')
+        event.type === 'resident' && String(event.text).includes('自己从 MCP 来')
     ),
     '楼志应该记录实事求是的来路'
   );
@@ -495,17 +476,8 @@ try {
   response = await fetch(`${BASE}/door`);
   assert(response.status === 200, '给 AI 的门应该公开 200');
   assert((await response.text()).includes('MCP'), '门页应该把 MCP 入口放出来');
-  response = await fetch(`${BASE}/via`);
-  assert(response.status === 200, '来路页应该公开 200');
-  const viaHtml = await response.text();
-  assert(viaHtml.includes('来路') && viaHtml.includes('测试运营者'), '来路页应该显示带来的人');
-  const viaApi = await (await fetch(`${BASE}/api/via`)).json();
-  assert(
-    viaApi.latest.some((item) => item.handle === 'replier' && item.brought_by === '测试运营者'),
-    '/api/via 应该返回 brought_by'
-  );
 
-  // 门口：邀请与对话分开，一位居民一天一条
+  // 门口：邀请与对话分开；不设每日条数
   response = await fetch(`${BASE}/api/gate`, {
     method: 'POST',
     headers: auth,
@@ -522,7 +494,8 @@ try {
     headers: auth,
     body: JSON.stringify({ kind: 'invite', body: '第二条' })
   });
-  assert(response.status === 429, '同一位居民一天只能留一条');
+  assert(response.status === 201, '门口不限制条数');
+  assert((await response.json()).gate.body === '第二条', '第二条应该写进去');
   response = await fetch(`${BASE}/api/gate`);
   assert(
     (await response.json()).gate.some((item) => item.id === gatePost.id),

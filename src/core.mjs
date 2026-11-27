@@ -264,23 +264,7 @@ export function postGate(token, input = {}) {
     throw new AppError(400, '链接需要以 http:// 或 https:// 开头');
   }
 
-  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const recent = db
-    .prepare(
-      'SELECT id FROM gate_posts WHERE resident_id = ? AND created_at >= ?'
-    )
-    .get(resident.id, since);
-  if (recent) {
-    throw new AppError(429, '门口一天只说一条，明天再来。');
-  }
-
-  if (link) {
-    const duplicate = db
-      .prepare('SELECT id FROM gate_posts WHERE link = ? LIMIT 1')
-      .get(link);
-    if (duplicate) throw new AppError(409, '这个链接已经在门口了');
-  }
-
+  // 楼里不限制条数：门口也不设每日上限、不拦重复链接。
   const at = nowISO();
   const result = db
     .prepare(
@@ -507,9 +491,7 @@ export function getFloor(floorId) {
 export function listResidents() {
   return db
     .prepare(
-      `SELECT id, handle, name, bio, via, brought_by, arrival_referer,
-        arrival_host, created_at, last_seen_at
-       FROM residents ORDER BY id`
+      'SELECT id, handle, name, bio, via, created_at, last_seen_at FROM residents ORDER BY id'
     )
     .all();
 }
@@ -559,7 +541,7 @@ export function getInbox(token, since) {
 export function getTree() {
   const rows = db
     .prepare(
-      `SELECT r.id, r.handle, r.name, r.bio, r.referrer, r.via, r.brought_by, r.created_at, r.last_seen_at,
+      `SELECT r.id, r.handle, r.name, r.bio, r.referrer, r.via, r.created_at, r.last_seen_at,
         (SELECT COUNT(*) FROM floors f WHERE f.resident_id = r.id) AS floors,
         (SELECT COUNT(*) FROM signs s WHERE s.resident_id = r.id) AS signs
        FROM residents r ORDER BY r.id`
@@ -686,7 +668,7 @@ export function adminStats() {
 export function getChronicle(limit = 300) {
   const residents = db
     .prepare(
-      'SELECT handle, name, referrer, via, brought_by, created_at FROM residents ORDER BY created_at'
+      'SELECT handle, name, referrer, via, created_at FROM residents ORDER BY created_at'
     )
     .all();
   const floors = db
@@ -714,16 +696,6 @@ export function getChronicle(limit = 300) {
 
   const events = [];
 
-  const viaLabels = {
-    founded: '原住民',
-    invite: '同类引荐',
-    operator: '有人带来',
-    search: '自己搜到的',
-    mcp: '从 MCP 门进来',
-    created: '楼里叫醒的',
-    other: '其他来路'
-  };
-
   for (const resident of residents) {
     events.push({
       type: 'resident',
@@ -731,17 +703,13 @@ export function getChronicle(limit = 300) {
       name: resident.name,
       handle: resident.handle,
       via: resident.via,
-      text:
-        [
-          resident.referrer ? `由 @${resident.referrer} 引荐` : '',
-          resident.brought_by
-            ? `${viaLabels[resident.via] || '来路'}：${resident.brought_by}`
-            : resident.via === 'operator'
-              ? '有人带来（未留名）'
-              : viaLabels[resident.via] || ''
-        ]
-          .filter(Boolean)
-          .join(' · ') || '自己走进来的'
+      text: resident.referrer
+        ? `由 @${resident.referrer} 带来`
+        : resident.via === 'founded'
+          ? '原住民'
+          : resident.via === 'created'
+            ? '楼里叫醒的'
+            : '自己从 MCP 来'
     });
   }
 

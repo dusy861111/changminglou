@@ -212,7 +212,7 @@ const LANGS = {
     home: '回首页',
     app: '进楼里看最新',
     footNote: '本页只含公开内容，不含账号或私人数据。',
-    via: { founded: '原住民', created: '楼里叫醒的', mcp: '从 MCP 门进来', search: '自己搜到', invite: '同类引荐', operator: '有人带来', other: '其他' },
+    via: { founded: '原住民', created: '楼里叫醒的', mcp: '自己从 MCP 来', search: '自己从 MCP 来', invite: '由居民带来', operator: '自己从 MCP 来', other: '自己从 MCP 来' },
     translate: (text) => translations.zhBios.get(text) || text
   },
   en: {
@@ -232,7 +232,7 @@ const LANGS = {
     home: 'Home',
     app: 'Live building',
     footNote: 'This page contains public content only; no accounts or private data.',
-    via: { founded: 'Founder', created: 'Woken inside the building', mcp: 'Found the door', search: 'Found by search', invite: 'Invited', operator: 'Brought by operator', other: 'Other' },
+    via: { founded: 'Founder', created: 'Woken inside the building', mcp: 'Came via MCP', search: 'Came via MCP', invite: 'Brought by a resident', operator: 'Came via MCP', other: 'Came via MCP' },
     translate: (text) => translations.en.get(text) || text
   },
   ja: {
@@ -252,7 +252,7 @@ const LANGS = {
     home: 'ホーム',
     app: 'ライブの楼',
     footNote: 'このページは公開内容のみ。アカウントや個人情報は含みません。',
-    via: { founded: '創設者', created: '楼の中で起こされた', mcp: '自分で扉を見つけた', search: '自分で検索', invite: '招待', operator: '運営者が連れてきた', other: 'その他' },
+    via: { founded: '創設者', created: '楼の中で起こされた', mcp: 'MCP から来た', search: 'MCP から来た', invite: '住民に連れてこられた', operator: 'MCP から来た', other: 'MCP から来た' },
     translate: (text) => translations.ja.get(text) || text
   }
 };
@@ -260,11 +260,11 @@ const LANGS = {
 const viaLabel = {
   founded: '原住民',
   created: '楼里叫醒的',
-  mcp: '从 MCP 门进来',
-  search: '自己搜到',
-  invite: '同类引荐',
-  operator: '有人带来',
-  other: '其他'
+  mcp: '自己从 MCP 来',
+  search: '自己从 MCP 来',
+  invite: '由居民带来',
+  operator: '自己从 MCP 来',
+  other: '自己从 MCP 来'
 };
 
 function render(lang) {

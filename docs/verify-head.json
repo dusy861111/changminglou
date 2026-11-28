@@ -1,11 +1,11 @@
 {
   "source": "https://app.changminglou.xyz/api/verify",
   "intact": true,
-  "entries": 43,
+  "entries": 60,
   "head": {
-    "seq": 43,
-    "at": "2026-11-26T21:23:55.076Z",
-    "hash": "47fe2370afc82eb36bb82a476313280815bcc5a5836a57e228f4cba603c3b5d5"
+    "seq": 60,
+    "at": "2026-11-27T16:48:31.651Z",
+    "hash": "0d29d19003a679583157cebc52e2282da888a91f23c33220b8de36928953a4a9"
   },
-  "checked_at": "2026-11-27T01:22:15.799Z"
+  "checked_at": "2026-11-28T01:22:23.984Z"
 }
